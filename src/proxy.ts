@@ -5,6 +5,7 @@ import { auth } from '@/auth'
 function pathNeedsTenant(pathname: string): boolean {
   if (pathname.startsWith('/api/')) {
     if (pathname.startsWith('/api/auth')) return false
+    if (pathname === '/api/oauth/consent') return false
     if (pathname.startsWith('/api/profile')) return false
     if (pathname.startsWith('/api/platform')) return false
     if (pathname.startsWith('/api/invitations')) return false
@@ -75,7 +76,8 @@ const withAuth = auth((req) => {
     pathname === '/oauth/userinfo' ||
     pathname === '/oauth/revoke' ||
     pathname === '/oauth/introspect' ||
-    pathname === '/oauth/logout'
+    pathname === '/oauth/logout' ||
+    pathname === '/oauth/logout/complete'
   ) {
     return NextResponse.next()
   }

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { getOAuthIssuer } from '@/lib/oauth2/issuer'
 import { oauthAuthorizeRedirectUriAllowlist } from '@/lib/oauth2/redirect-allowlist-env'
 import {
   clientAllowsGrant,
@@ -15,7 +16,8 @@ export function oauthErrRedirect(redirectUri: string, error: string, desc: strin
   u.searchParams.set('error', error)
   u.searchParams.set('error_description', desc)
   if (state) u.searchParams.set('state', state)
-  return NextResponse.redirect(u)
+  u.searchParams.set('iss', getOAuthIssuer())
+  return NextResponse.redirect(u, 303)
 }
 
 export type AuthorizeValidated = {
@@ -38,6 +40,9 @@ export async function validateAuthorizeSearchParams(sp: URLSearchParams): Promis
   | { ok: true; data: AuthorizeValidated }
   | { ok: false; response: NextResponse }
 > {
+  for (const key of sp.keys()) {
+    if (sp.getAll(key).length > 1) return { ok: false, response: NextResponse.json({ error: 'invalid_request' }, { status: 400 }) }
+  }
   const responseType = sp.get('response_type')
   const clientId = sp.get('client_id')
   const redirectUri = sp.get('redirect_uri')
@@ -92,7 +97,7 @@ export async function validateAuthorizeSearchParams(sp: URLSearchParams): Promis
     }
   }
 
-  if (/\boffline_access\b/.test(scopeRaw) && !clientAllowsGrant(client, 'refresh_token')) {
+  if (scopeRaw.split(/\s+/).includes('offline_access') && !clientAllowsGrant(client, 'refresh_token')) {
     return {
       ok: false,
       response: oauthErrRedirect(
@@ -104,7 +109,20 @@ export async function validateAuthorizeSearchParams(sp: URLSearchParams): Promis
     }
   }
 
+  if (sp.has('response_mode') && sp.get('response_mode') !== 'query') {
+    return { ok: false, response: oauthErrRedirect(redirectUri, 'invalid_request', '仅支持 query response_mode', state) }
+  }
+  const prompt = sp.get('prompt')
+  if (prompt === 'none') {
+    return { ok: false, response: oauthErrRedirect(redirectUri, 'consent_required', '需要交互确认授权', state) }
+  }
+  if (prompt && prompt !== 'consent') {
+    return { ok: false, response: oauthErrRedirect(redirectUri, 'invalid_request', '目前仅支持 consent / none prompt', state) }
+  }
   const pub = isPublicClient(client)
+  if ((codeChallenge && !/^[A-Za-z0-9_-]{43}$/.test(codeChallenge)) || (codeChallengeMethod && !codeChallenge)) {
+    return { ok: false, response: oauthErrRedirect(redirectUri, 'invalid_request', 'PKCE 参数无效', state) }
+  }
   if (codeChallenge && codeChallengeMethod !== 'S256') {
     return {
       ok: false,

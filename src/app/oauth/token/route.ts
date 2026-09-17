@@ -4,43 +4,18 @@ import {
   clampRefreshTokenTtlDays,
   clientAllowsGrant,
   consumeAuthorizationCode,
-  getOAuth2ClientByClientId,
   getUserClaimsForToken,
+  lookupRefreshTokenActive,
+  scopesAllowed,
   insertRefreshTokenRow,
   isPublicClient,
   newRefreshTokenPlain,
   takeRefreshTokenForRotation,
-  verifyClientSecret,
   type OAuth2ClientRow,
 } from '@/lib/oauth2/store'
-import { verifyPkceS256 } from '@/lib/oauth2/pkce'
+import { authenticateOAuthClient, readOAuthForm, oauthJsonError as jsonError } from '@/lib/oauth2/request'
 import { signAccessToken, signIdToken } from '@/lib/oauth2/jwt-as'
 import { tenantArchivedBlocksOAuthIssuance } from '@/lib/tenant-lifecycle'
-
-function jsonError(status: number, error: string, description?: string) {
-  const b: Record<string, string> = { error }
-  if (description) b.error_description = description
-  return NextResponse.json(b, { status, headers: { 'Cache-Control': 'no-store' } })
-}
-
-function parseBasicAuth(header: string | null): { id: string; secret: string } | null {
-  if (!header?.startsWith('Basic ')) return null
-  const decoded = Buffer.from(header.slice(6).trim(), 'base64').toString('utf8')
-  const idx = decoded.indexOf(':')
-  if (idx < 0) return null
-  return { id: decoded.slice(0, idx), secret: decoded.slice(idx + 1) }
-}
-
-async function resolveClientAuth(req: NextRequest, body: URLSearchParams) {
-  let clientId = body.get('client_id')
-  let clientSecret = body.get('client_secret')
-  const basic = parseBasicAuth(req.headers.get('authorization'))
-  if (basic) {
-    clientId = clientId || basic.id
-    clientSecret = clientSecret || basic.secret
-  }
-  return { clientId, clientSecret }
-}
 
 async function issueAccessAndId(
   client: OAuth2ClientRow,
@@ -59,7 +34,7 @@ async function issueAccessAndId(
     expiresInSeconds: accessTtl,
   })
 
-  const wantIdToken = /\bopenid\b/.test(scope)
+  const wantIdToken = scope.split(/\s+/).includes('openid')
   let idToken: string | undefined
   if (wantIdToken) {
     const idPayload: Parameters<typeof signIdToken>[0] = {
@@ -68,8 +43,11 @@ async function issueAccessAndId(
       nonce,
       expiresInSeconds: accessTtl,
     }
-    if (/\bemail\b/.test(scope) && claims.email) idPayload.email = claims.email
-    if (/\bprofile\b/.test(scope)) {
+    if (scope.split(/\s+/).includes('email') && claims.email) {
+      idPayload.email = claims.email
+      idPayload.emailVerified = claims.emailVerified
+    }
+    if (scope.split(/\s+/).includes('profile')) {
       if (claims.name) idPayload.name = claims.name
       if (claims.picture) idPayload.picture = claims.picture
     }
@@ -80,7 +58,7 @@ async function issueAccessAndId(
 }
 
 async function maybeIssueRefreshToken(client: OAuth2ClientRow, userId: string, scope: string) {
-  if (!/\boffline_access\b/.test(scope)) return undefined
+  if (!scope.split(/\s+/).includes('offline_access')) return undefined
   if (!clientAllowsGrant(client, 'refresh_token')) return undefined
   const plain = newRefreshTokenPlain()
   const days = clampRefreshTokenTtlDays(client)
@@ -95,18 +73,16 @@ async function maybeIssueRefreshToken(client: OAuth2ClientRow, userId: string, s
   return plain
 }
 
-async function handleAuthorizationCode(req: NextRequest, body: URLSearchParams) {
+async function handleAuthorizationCode(client: OAuth2ClientRow, body: URLSearchParams) {
   const code = body.get('code')
   const redirectUri = body.get('redirect_uri')
-  const { clientId, clientSecret } = await resolveClientAuth(req, body)
+  const clientId = client.clientId
   const codeVerifier = body.get('code_verifier')
 
   if (!code || !redirectUri || !clientId) {
     return jsonError(400, 'invalid_request', '缺少 code、redirect_uri 或 client_id')
   }
 
-  const client = await getOAuth2ClientByClientId(clientId)
-  if (!client) return jsonError(400, 'invalid_client')
   if (
     client.applicationTenantId &&
     (await tenantArchivedBlocksOAuthIssuance(client.applicationTenantId))
@@ -117,35 +93,10 @@ async function handleAuthorizationCode(req: NextRequest, body: URLSearchParams) 
     return jsonError(400, 'unauthorized_client', '该客户端未启用授权码流程')
   }
 
-  const consumed = await consumeAuthorizationCode(code)
-  if (!consumed) {
-    return jsonError(400, 'invalid_grant', '授权码无效或已使用')
-  }
-  if (consumed.clientId !== clientId || consumed.redirectUri !== redirectUri) {
-    return jsonError(400, 'invalid_grant', 'client_id 或 redirect_uri 与授权时不一致')
-  }
-
-  const pub = isPublicClient(client)
-  if (pub) {
-    if (!codeVerifier) {
-      return jsonError(400, 'invalid_grant', '公开客户端须提交 code_verifier（PKCE）')
-    }
-    if (!consumed.codeChallenge || consumed.codeChallengeMethod !== 'S256') {
-      return jsonError(400, 'invalid_grant', '授权码缺少 PKCE 绑定')
-    }
-    if (!verifyPkceS256(codeVerifier, consumed.codeChallenge)) {
-      return jsonError(400, 'invalid_grant', 'code_verifier 校验失败')
-    }
-  } else {
-    if (!verifyClientSecret(client, clientSecret)) {
-      return jsonError(401, 'invalid_client', 'client_secret 不正确或未提供')
-    }
-    if (consumed.codeChallenge) {
-      if (!codeVerifier || !verifyPkceS256(codeVerifier, consumed.codeChallenge)) {
-        return jsonError(400, 'invalid_grant', 'PKCE code_verifier 校验失败')
-      }
-    }
-  }
+  const consumed = await consumeAuthorizationCode(code, {
+    clientId, redirectUri, codeVerifier, requirePkce: isPublicClient(client),
+  })
+  if (!consumed) return jsonError(400, 'invalid_grant', '授权码无效、已使用或 PKCE 校验失败')
 
   const bundle = await issueAccessAndId(client, consumed.userId, consumed.scope, consumed.nonce)
   if (!bundle) return jsonError(400, 'invalid_grant', '用户不可用')
@@ -165,16 +116,14 @@ async function handleAuthorizationCode(req: NextRequest, body: URLSearchParams) 
   )
 }
 
-async function handleRefreshToken(req: NextRequest, body: URLSearchParams) {
+async function handleRefreshToken(client: OAuth2ClientRow, body: URLSearchParams) {
   const refreshToken = body.get('refresh_token')
-  const { clientId, clientSecret } = await resolveClientAuth(req, body)
+  const clientId = client.clientId
 
   if (!refreshToken || !clientId) {
     return jsonError(400, 'invalid_request', '缺少 refresh_token 或 client_id')
   }
 
-  const client = await getOAuth2ClientByClientId(clientId)
-  if (!client) return jsonError(400, 'invalid_client')
   if (
     client.applicationTenantId &&
     (await tenantArchivedBlocksOAuthIssuance(client.applicationTenantId))
@@ -185,28 +134,21 @@ async function handleRefreshToken(req: NextRequest, body: URLSearchParams) {
     return jsonError(400, 'unauthorized_client', '该客户端未启用 refresh_token 授权')
   }
 
-  const pub = isPublicClient(client)
-  if (!pub && !verifyClientSecret(client, clientSecret)) {
-    return jsonError(401, 'invalid_client', 'client_secret 不正确或未提供')
-  }
-
-  const row = await takeRefreshTokenForRotation(refreshToken)
-  if (!row || row.clientId !== client.clientId) {
+  const row = await lookupRefreshTokenActive(refreshToken)
+  const newRefresh = newRefreshTokenPlain()
+  if (!row) {
+    await takeRefreshTokenForRotation(refreshToken, clientId, { plainToken: newRefresh, scope: '' })
     return jsonError(400, 'invalid_grant', 'refresh_token 无效或已吊销')
   }
-
-  const bundle = await issueAccessAndId(client, row.userId, row.scope, null)
+  if (row.clientId !== clientId) return jsonError(400, 'invalid_grant')
+  const scope = body.has('scope') ? body.get('scope')!.trim() : row.scope
+  if (!scope || !scopesAllowed(scope, row.scope) || !scopesAllowed(scope, client.allowedScopes)) {
+    return jsonError(400, 'invalid_scope')
+  }
+  const bundle = await issueAccessAndId(client, row.userId, scope, null)
   if (!bundle) return jsonError(400, 'invalid_grant', '用户不可用')
-
-  const newRefresh = newRefreshTokenPlain()
-  const days = clampRefreshTokenTtlDays(client)
-  await insertRefreshTokenRow({
-    plainToken: newRefresh,
-    clientId: client.clientId,
-    userId: row.userId,
-    scope: row.scope,
-    expiresAtIso: new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString(),
-  })
+  const rotated = await takeRefreshTokenForRotation(refreshToken, clientId, { plainToken: newRefresh, scope })
+  if (!rotated) return jsonError(400, 'invalid_grant', 'refresh_token 已使用')
 
   return NextResponse.json(
     {
@@ -226,20 +168,16 @@ async function handleRefreshToken(req: NextRequest, body: URLSearchParams) {
  * @see RFC 6749 §4.1.3、§6、OpenID Connect Core
  */
 export async function POST(req: NextRequest) {
-  let body: URLSearchParams
   try {
-    const text = await req.text()
-    body = new URLSearchParams(text)
+    const body = await readOAuthForm(req)
+    if (body instanceof NextResponse) return body
+    const authentication = await authenticateOAuthClient(req, body)
+    if (authentication.response) return authentication.response
+    const grantType = body.get('grant_type')
+    if (grantType === 'authorization_code') return await handleAuthorizationCode(authentication.client!, body)
+    if (grantType === 'refresh_token') return await handleRefreshToken(authentication.client!, body)
+    return jsonError(400, 'unsupported_grant_type')
   } catch {
-    return jsonError(400, 'invalid_request', '无法解析请求体')
+    return jsonError(500, 'server_error')
   }
-
-  const grantType = body.get('grant_type')
-  if (grantType === 'authorization_code') {
-    return handleAuthorizationCode(req, body)
-  }
-  if (grantType === 'refresh_token') {
-    return handleRefreshToken(req, body)
-  }
-  return jsonError(400, 'unsupported_grant_type')
 }

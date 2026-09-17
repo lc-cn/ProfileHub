@@ -19,7 +19,7 @@ Issue #9 验收项中需**组织内人工**完成的部分，在此留痕；完�
 - [x] **内部评审**：至少一次走读（安全 / 运维 / 工程），结论写入下表。
 - [x] **恢复演练**：按 [§3](#3-备份与恢复-turso--libsql) 执行至少一次 **Turso PITR 全链路**演练，结果写入 [附录 A](#附录-a-恢复演练登记簿)（与下列「环境对表认可」不同）。
 - [x] **生产环境变量**：已将 [§4](#4-环境变量策略) 与 **Vercel** 实际部署做键名级对表，结论记入 [附录 B](#附录-b-生产部署与仓库默认差异登记) 与 [§4.3](#vercel-env-snapshot)；**维护 Owner 已认可**（2026-05-11）。
-- [x] **Issue #13（协作功能开关）**：**§4.2.2** 与附录 B 中 `FEATURE_*` 已与线上一致；维护 Owner 已认可（[#13](https://github.com/lc-cn/rbac-template/issues/13)）。
+- [x] **Issue #13（协作功能开关）**：**§4.2.2** 与附录 B 中 `FEATURE_*` 已与线上一致；维护 Owner 已认可（[#13](https://github.com/lc-cn/ProfileHub/issues/13)）。
 
 ### 本地协作：入库当天可完成的 4 步（与维护人一起）
 
@@ -147,7 +147,7 @@ Issue #9 验收项中需**组织内人工**完成的部分，在此留痕；完�
 
 #### 4.2.4 关闭态 HTTP 语义与回归（Issue #14）
 
-`FEATURE_INVITES` / `FEATURE_OWNER_TRANSFER` 为 `**off`**（或其它关闭值）时，对应 HTTP API 返回 `**404**`，JSON 为 `{"error":"not_found"}`，属**刻意关闭后的预期语义**，不应按「路由未注册或应用损坏」升级事故。可勾选回归步骤与路径表见 `[wave3-features-disabled-regression.md](wave3-features-disabled-regression.md)`（[Issue #14](https://github.com/lc-cn/rbac-template/issues/14)）。
+`FEATURE_INVITES` / `FEATURE_OWNER_TRANSFER` 为 `**off`**（或其它关闭值）时，对应 HTTP API 返回 `**404**`，JSON 为 `{"error":"not_found"}`，属**刻意关闭后的预期语义**，不应按「路由未注册或应用损坏」升级事故。可勾选回归步骤与路径表见 `[wave3-features-disabled-regression.md](wave3-features-disabled-regression.md)`（[Issue #14](https://github.com/lc-cn/ProfileHub/issues/14)）。
 
 
 
@@ -223,5 +223,5 @@ Issue #9 验收项中需**组织内人工**完成的部分，在此留痕；完�
 - Turso PITR：[https://docs.turso.tech/features/point-in-time-recovery](https://docs.turso.tech/features/point-in-time-recovery)
 - 治理矩阵：[`docs/governance-matrix.md`](governance-matrix.md)
 - 领域词汇：[`CONTEXT.md`](../CONTEXT.md)
-- 第三波功能开关关闭时的 API 与回归清单：[`wave3-features-disabled-regression.md`](wave3-features-disabled-regression.md)（[Issue #14](https://github.com/lc-cn/rbac-template/issues/14)）
+- 第三波功能开关关闭时的 API 与回归清单：[`wave3-features-disabled-regression.md`](wave3-features-disabled-regression.md)（[Issue #14](https://github.com/lc-cn/ProfileHub/issues/14)）
 

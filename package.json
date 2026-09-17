@@ -1,5 +1,5 @@
 {
-  "name": "rbac-template",
+  "name": "profilehub",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -8,10 +8,12 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test",
+    "test": "node --experimental-strip-types --experimental-test-module-mocks --import ./scripts/test-register.mjs --test",
     "seed": "node scripts/seed.mjs",
     "db:apply-sql": "node scripts/apply-schema-sql.mjs",
-    "vercel:env-diff": "node scripts/compare-vercel-env.mjs"
+    "vercel:env-diff": "node scripts/compare-vercel-env.mjs",
+    "test:oauth": "node --experimental-strip-types --experimental-test-module-mocks --import ./scripts/test-register.mjs --test tests/oauth-server.test.ts",
+    "oauth:generate-key": "node scripts/generate-oauth-key.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

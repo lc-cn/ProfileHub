@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 import { getOAuthIssuer } from '@/lib/oauth2/issuer'
-import { oauthSigningAlgsSupported } from '@/lib/oauth2/jwt-as'
 import { OAuth2DocsToc } from './oauth2-toc'
 
 export const metadata: Metadata = {
@@ -43,7 +42,7 @@ export default async function OAuth2DocsPage() {
   } catch {
     issuer = 'https://<部署域名>'
   }
-  const algs = oauthSigningAlgsSupported().join(', ')
+  const algs = 'RS256（需配置 RSA 私钥）'
 
   return (
     <div className="docs-doc-shell">
@@ -136,11 +135,11 @@ export default async function OAuth2DocsPage() {
           <ul className="list-disc space-y-2 pl-5">
             <li>
               <strong className="text-foreground">Discovery</strong>：<Code>GET {'{ISSUER}'}/.well-known/openid-configuration</Code>，响应为 JSON；本实现附带{' '}
-              <Code>Cache-Control: public, max-age=3600</Code>，仍建议在客户端侧控制刷新策略。
+              <Code>Cache-Control: public, max-age=300</Code>，仍建议在客户端侧控制刷新策略。
             </li>
             <li>
               <strong className="text-foreground">JWKS</strong>：当部署配置了 RSA 等非对称密钥时，元数据中会包含 <Code>jwks_uri</Code>（一般为{' '}
-              <Code>{'{ISSUER}'}/.well-known/jwks.json</Code>）。依赖方校验 <Code>id_token</Code> 或自建 JWT 验签时应拉取 JWKS；未配置非对称密钥时可能仅有 HS256 等对称方案，请以元数据中的{' '}
+              <Code>{'{ISSUER}'}/.well-known/jwks.json</Code>）。依赖方校验 <Code>id_token</Code> 或自建 JWT 验签时应拉取 JWKS；OIDC 必须配置有效 RSA 私钥；缺失或无效时 Discovery 返回 503，ID Token 不降级为 HS256。签名算法见{' '}
               <Code>id_token_signing_alg_values_supported</Code> 为准。
             </li>
           </ul>
@@ -297,7 +296,7 @@ export default async function OAuth2DocsPage() {
               <strong className="text-foreground">client_secret_post</strong>：<Code>client_id</Code>、<Code>client_secret</Code> 与其它参数一并放在表单中。
             </li>
             <li>
-              <strong className="text-foreground">client_secret_basic</strong>：使用 <Code>Authorization: Basic Base64(client_id:client_secret)</Code>，表单中仍须包含 <Code>client_id</Code>（实现会从 Basic 或表单合并解析）。
+              <strong className="text-foreground">client_secret_basic</strong>：使用 <Code>Authorization: Basic Base64(client_id:client_secret)</Code>，client_id 与 secret 应先分别按表单规则编码。表单可省略 client_id；若提供必须一致，不能同时发送 client_secret。
             </li>
           </ul>
 
@@ -348,7 +347,7 @@ export default async function OAuth2DocsPage() {
               表单字段：<Code>grant_type=refresh_token</Code>、<Code>refresh_token</Code>、<Code>client_id</Code>；机密客户端须带 <Code>client_secret</Code> 或 Basic。
             </li>
             <li>
-              本实现采用<strong className="text-foreground">刷新令牌轮换</strong>：每次成功刷新会签发<strong className="text-foreground">新的</strong> <Code>refresh_token</Code>，旧值立即失效；贵方须<strong className="text-foreground">原子更新</strong>持久化中的 refresh token，避免并发请求使用同一旧 token 导致其中一次失败。
+              本实现采用<strong className="text-foreground">刷新令牌轮换</strong>：每次成功刷新会签发<strong className="text-foreground">新的</strong> <Code>refresh_token</Code>，旧值立即失效；贵方须<strong className="text-foreground">原子更新</strong>持久化中的 refresh token，并串行刷新；重复使用旧 token 会吊销它的后续刷新令牌，需要重新登录。轮换保留初始绝对过期时间；可用 scope 参数缩减权限。
             </li>
             <li>
               若客户端或所属应用租户被归档等，换发可能失败（实现中可能返回 <Code>invalid_grant</Code> 及中文描述，请以实际响应为准）。
@@ -393,13 +392,13 @@ export default async function OAuth2DocsPage() {
               响应为 JSON，至少包含 <Code>sub</Code>；在 access token 的 scope 包含 <Code>email</Code> / <Code>profile</Code> 时返回对应声明（如 <Code>email</Code>、<Code>name</Code>、<Code>picture</Code>）。
             </li>
             <li>
-              令牌无效或校验失败时返回 <Code>401</Code>，JSON 形如 <Code>{'{'}"error":"invalid_token"{'}'}</Code>。
+              令牌无效或校验失败时返回 <Code>401</Code>，JSON 形如 <Code>{'{"error":"invalid_token"}'}</Code>。
             </li>
           </ul>
 
           <H3 id="resource-revoke">6.2 令牌吊销（<Code>POST {'{ISSUER}'}/oauth/revoke</Code>，RFC 7009）</H3>
           <p>
-            表单提交 <Code>token</Code>；可选 <Code>token_type_hint</Code>。当前实现侧重对持久化存储的 <Code>refresh_token</Code> 做吊销；对无状态 JWT 形态的 access token 未必有全局撤销表——架构上请结合<strong className="text-foreground">短 TTL</strong>与<strong className="text-foreground">自省</strong>综合评估。
+            表单提交 <Code>token</Code> 和客户端身份；机密客户端必须认证，公开客户端提供 client_id。仅吊销该客户端的 refresh_token 及其轮换后续令牌。显式请求吊销 access_token 返回 unsupported_token_type；JWT access_token 在到期前仍可用。
           </p>
 
           <H3 id="resource-introspect">6.3 令牌自省（<Code>POST {'{ISSUER}'}/oauth/introspect</Code>，RFC 7662）</H3>
@@ -410,7 +409,7 @@ export default async function OAuth2DocsPage() {
           <H3 id="resource-logout">6.4 RP 发起登出（<Code>GET {'{ISSUER}'}/oauth/logout</Code>）</H3>
           <ul className="list-disc space-y-2 pl-5">
             <li>
-              查询参数通常包括：<Code>client_id</Code>、<Code>post_logout_redirect_uri</Code>、<Code>state</Code>（具体以实现与同意登记为准）。
+              查询参数包括 client_id 或已签名的 id_token_hint、可选 post_logout_redirect_uri 和 state。经 Auth.js 确认登出后返回登记地址；不指定回调也会登出并返回登录页。登出不等同于吊销已签发令牌。
             </li>
             <li>
               <Code>post_logout_redirect_uri</Code> 必须在控制台「登出后回调」白名单中<strong className="text-foreground">逐项匹配</strong>；生产环境请使用 HTTPS 并采用最小化白名单。

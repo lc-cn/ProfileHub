@@ -1,48 +1,44 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { oauthPostLogoutRedirectUriAllowlist } from '@/lib/oauth2/redirect-allowlist-env'
 import { getOAuth2ClientByClientId, parseRedirectUris, redirectUriAllowed } from '@/lib/oauth2/store'
+import { verifyIdTokenHint } from '@/lib/oauth2/jwt-as'
+import { signLogoutTicket } from '@/lib/oauth2/logout-ticket'
+import { oauthJsonError } from '@/lib/oauth2/request'
 
-/**
- * OIDC RP-Initiated Logout 入口：校验 client 与 post_logout_redirect_uri 后跳转 NextAuth 登出。
- * @see OpenID Connect RP-Initiated Logout 1.0（简化实现）
- */
+/** The Auth.js confirmation page handles CSRF and clears the entire session cookie (including chunks). */
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams
-  const clientId = sp.get('client_id')
+  for (const key of sp.keys()) {
+    if (sp.getAll(key).length > 1) return oauthJsonError(400, 'invalid_request')
+  }
+  let clientId = sp.get('client_id')
+  const hint = sp.get('id_token_hint')
+  if (hint) {
+    try {
+      const claims = await verifyIdTokenHint(hint)
+      if (clientId && clientId !== claims.aud) return oauthJsonError(400, 'invalid_request')
+      clientId = claims.aud as string
+    } catch {
+      return oauthJsonError(400, 'invalid_request', 'id_token_hint 无效')
+    }
+  }
   const postLogout = sp.get('post_logout_redirect_uri')
-  const state = sp.get('state')
-
-  if (!postLogout?.trim()) {
-    const home = new URL('/', req.nextUrl.origin)
-    return NextResponse.redirect(home)
+  const client = clientId ? await getOAuth2ClientByClientId(clientId) : null
+  if (clientId && !client) return oauthJsonError(400, 'invalid_client')
+  if (postLogout && (!client || !redirectUriAllowed(postLogout,
+    oauthPostLogoutRedirectUriAllowlist(parseRedirectUris(client.postLogoutRedirectUrisJson))))) {
+    return oauthJsonError(400, 'invalid_request', 'post_logout_redirect_uri 未在客户端登记')
   }
-
-  if (!clientId) {
-    return NextResponse.json({ error: 'invalid_request', error_description: '缺少 client_id' }, { status: 400 })
-  }
-
-  const client = await getOAuth2ClientByClientId(clientId)
-  if (!client) {
-    return NextResponse.json({ error: 'invalid_client' }, { status: 400 })
-  }
-
-  const allowed = oauthPostLogoutRedirectUriAllowlist(parseRedirectUris(client.postLogoutRedirectUrisJson || '[]'))
-  if (!redirectUriAllowed(postLogout, allowed)) {
-    return NextResponse.json(
-      { error: 'invalid_request', error_description: 'post_logout_redirect_uri 未在该客户端登记' },
-      { status: 400 }
-    )
-  }
-
   let target: URL
   try {
-    target = new URL(postLogout)
+    target = postLogout ? new URL(postLogout) : new URL('/login', req.nextUrl.origin)
   } catch {
-    return NextResponse.json({ error: 'invalid_request', error_description: 'post_logout_redirect_uri 无效' }, { status: 400 })
+    return oauthJsonError(400, 'invalid_request')
   }
-  if (state) target.searchParams.set('state', state)
-
+  if (sp.has('state')) target.searchParams.set('state', sp.get('state')!)
+  const complete = new URL('/oauth/logout/complete', req.nextUrl.origin)
+  complete.searchParams.set('ticket', await signLogoutTicket(clientId, target.toString()))
   const signout = new URL('/api/auth/signout', req.nextUrl.origin)
-  signout.searchParams.set('callbackUrl', target.toString())
-  return NextResponse.redirect(signout)
+  signout.searchParams.set('callbackUrl', complete.toString())
+  return NextResponse.redirect(signout, { status: 303, headers: { 'Cache-Control': 'no-store' } })
 }

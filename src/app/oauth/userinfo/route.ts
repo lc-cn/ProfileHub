@@ -21,8 +21,11 @@ export async function GET(req: NextRequest) {
 
     const scope = typeof payload.scope === 'string' ? payload.scope : ''
     const out: Record<string, unknown> = { sub: claims.sub }
-    if (/\bemail\b/.test(scope) && claims.email) out.email = claims.email
-    if (/\bprofile\b/.test(scope)) {
+    if (scope.split(/\s+/).includes('email') && claims.email) {
+      out.email = claims.email
+      out.email_verified = claims.emailVerified
+    }
+    if (scope.split(/\s+/).includes('profile')) {
       if (claims.name) out.name = claims.name
       if (claims.picture) out.picture = claims.picture
     }
@@ -31,3 +34,5 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'invalid_token' }, { status: 401 })
   }
 }
+
+export const POST = GET

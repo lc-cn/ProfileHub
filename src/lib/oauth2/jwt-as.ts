@@ -1,5 +1,5 @@
-import { createPrivateKey } from 'node:crypto'
-import { decodeProtectedHeader, exportJWK, importPKCS8, importSPKI, jwtVerify, SignJWT, type JWTPayload, type JWK } from 'jose'
+import { createPrivateKey, createPublicKey } from 'node:crypto'
+import { compactVerify, decodeProtectedHeader, exportJWK, importPKCS8, importSPKI, jwtVerify, SignJWT, type JWTPayload, type JWK } from 'jose'
 import { getOAuthIssuer } from '@/lib/oauth2/issuer'
 
 const RSA_KID = 'oauth-rsa-1'
@@ -21,25 +21,21 @@ function loadPemPrivate(): string | null {
 }
 
 type RsaCached = { privateKey: Awaited<ReturnType<typeof importPKCS8>>; publicSpkiPem: string }
-let rsaCache: RsaCached | null | undefined
+let rsaCache: { pem: string; material: RsaCached } | undefined
 
 async function getRsaMaterial(): Promise<RsaCached | null> {
-  if (rsaCache === null) return null
-  if (rsaCache) return rsaCache
   const pem = loadPemPrivate()
-  if (!pem) {
-    rsaCache = null
-    return null
-  }
+  if (!pem) return null
+  if (rsaCache?.pem === pem) return rsaCache.material
   try {
     const pk = createPrivateKey(pem)
-    const publicSpkiPem = pk.export({ type: 'spki', format: 'pem' }) as string
+    const publicSpkiPem = createPublicKey(pk).export({ type: 'spki', format: 'pem' }) as string
     const privateKey = await importPKCS8(pem, 'RS256')
-    rsaCache = { privateKey, publicSpkiPem }
-    return rsaCache
+    const material = { privateKey, publicSpkiPem }
+    rsaCache = { pem, material }
+    return material
   } catch {
-    rsaCache = null
-    return null
+    throw new Error('OAuth RSA 私钥无效，必须配置有效的 PKCS8 RSA 私钥')
   }
 }
 
@@ -52,8 +48,9 @@ function secretKey(): Uint8Array {
 }
 
 /** Discovery：当前支持的 id_token / access_token 签名算法列表 */
-export function oauthSigningAlgsSupported(): string[] {
-  return loadPemPrivate() ? ['RS256', 'HS256'] : ['HS256']
+export async function oauthSigningAlgsSupported(): Promise<string[]> {
+  if (!(await getRsaMaterial())) throw new Error('OIDC 需要配置 OAUTH_RSA_PRIVATE_KEY_PEM 或 OAUTH_RSA_PRIVATE_KEY_B64')
+  return ['RS256']
 }
 
 export async function getOAuthJwks(): Promise<{ keys: JWK[] }> {
@@ -107,6 +104,7 @@ export async function signIdToken(params: {
   aud: string
   nonce?: string | null
   email?: string
+  emailVerified?: boolean
   name?: string
   picture?: string
   /** 与 access_token 对齐；秒，默认 3600，范围 300–86400 */
@@ -115,6 +113,7 @@ export async function signIdToken(params: {
   const issuer = getOAuthIssuer()
   const body: Record<string, unknown> = {}
   if (params.email != null) body.email = params.email
+  if (params.emailVerified != null) body.email_verified = params.emailVerified
   if (params.name != null) body.name = params.name
   if (params.picture != null) body.picture = params.picture
   if (params.nonce) body.nonce = params.nonce
@@ -131,14 +130,20 @@ export async function signIdToken(params: {
       .setExpirationTime(expUnix)
       .sign(rsa.privateKey)
   }
-  return new SignJWT(body)
-    .setProtectedHeader({ alg: 'HS256' })
-    .setIssuer(issuer)
-    .setSubject(params.sub)
-    .setAudience(params.aud)
-    .setIssuedAt()
-    .setExpirationTime(expUnix)
-    .sign(secretKey())
+  throw new Error('OIDC ID Token 签发需要配置 RSA 私钥')
+}
+
+/** Logout hints may be expired, but must still be signed ID tokens for this issuer. */
+export async function verifyIdTokenHint(token: string): Promise<JWTPayload> {
+  const rsa = await getRsaMaterial()
+  if (!rsa) throw new Error('RSA key required')
+  const pub = await importSPKI(rsa.publicSpkiPem, 'RS256')
+  const verified = await compactVerify(token, pub, { algorithms: ['RS256'] })
+  const payload = JSON.parse(new TextDecoder().decode(verified.payload)) as JWTPayload
+  if (payload.iss !== getOAuthIssuer() || typeof payload.sub !== 'string' ||
+      typeof payload.aud !== 'string' || typeof payload.exp !== 'number' ||
+      typeof payload.iat !== 'number' || payload.token_use != null) throw new Error('invalid ID token hint')
+  return payload
 }
 
 export async function verifyAccessToken(token: string): Promise<JWTPayload> {

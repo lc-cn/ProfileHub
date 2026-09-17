@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto'
 import bcrypt from 'bcryptjs'
 import { getDb, newId, nowIso } from '@/lib/db'
+import { verifyPkceS256 } from '@/lib/oauth2/pkce'
 
 export type OAuth2ClientRow = {
   id: string
@@ -183,16 +184,28 @@ export type ConsumedCode = {
   nonce: string | null
 }
 
-export async function consumeAuthorizationCode(code: string): Promise<ConsumedCode | null> {
+export async function consumeAuthorizationCode(code: string, binding: {
+  clientId: string; redirectUri: string; codeVerifier: string | null; requirePkce: boolean
+}): Promise<ConsumedCode | null> {
   const db = getDb()
   const now = nowIso()
   const sel = await db.execute({
-    sql: `SELECT * FROM "OAuth2AuthorizationCode" WHERE "code" = ? AND "expiresAt" > ?`,
-    args: [code, now],
+    sql: `SELECT * FROM "OAuth2AuthorizationCode" WHERE "code" = ? AND "expiresAt" > ?
+          AND "clientId" = ? AND "redirectUri" = ?`,
+    args: [code, now, binding.clientId, binding.redirectUri],
   })
   const row = sel.rows[0] as unknown as Record<string, unknown> | undefined
   if (!row) return null
-  await db.execute({ sql: `DELETE FROM "OAuth2AuthorizationCode" WHERE "code" = ?`, args: [code] })
+  if (binding.requirePkce || row.codeChallenge != null) {
+    if (row.codeChallengeMethod !== 'S256' || !binding.codeVerifier ||
+        !verifyPkceS256(binding.codeVerifier, String(row.codeChallenge))) return null
+  }
+  // DELETE ... RETURNING elects exactly one winner, even across server instances.
+  const deleted = await db.execute({
+    sql: `DELETE FROM "OAuth2AuthorizationCode" WHERE "id" = ? AND "expiresAt" > ? RETURNING "id"`,
+    args: [String(row.id), nowIso()],
+  })
+  if (!deleted.rows.length) return null
   return {
     clientId: String(row.clientId),
     userId: String(row.userId),
@@ -259,58 +272,85 @@ export async function lookupRefreshTokenActive(plainToken: string): Promise<Acti
 }
 
 /** 消费刷新令牌：标记吊销并返回行数据（用于 refresh_token 轮换） */
-export async function takeRefreshTokenForRotation(plainToken: string): Promise<ActiveRefreshRow | null> {
+export async function takeRefreshTokenForRotation(
+  plainToken: string, clientId: string, replacement: { plainToken: string; scope: string }
+): Promise<ActiveRefreshRow | null> {
   const db = getDb()
-  const now = nowIso()
-  const tokenHash = hashOpaqueToken(plainToken)
-  const sel = await db.execute({
-    sql: `SELECT "id","clientId","userId","scope","expiresAt" FROM "OAuth2RefreshToken"
-          WHERE "tokenHash" = ? AND "expiresAt" > ? AND "revokedAt" IS NULL`,
-    args: [tokenHash, now],
-  })
-  const row = sel.rows[0] as unknown as Record<string, unknown> | undefined
-  if (!row) return null
-  const id = String(row.id)
-  await db.execute({
-    sql: `UPDATE "OAuth2RefreshToken" SET "revokedAt" = ? WHERE "id" = ? AND "revokedAt" IS NULL`,
-    args: [now, id],
-  })
-  return {
-    id,
-    clientId: String(row.clientId),
-    userId: String(row.userId),
-    scope: String(row.scope),
-    expiresAt: String(row.expiresAt),
+  const tx = await db.transaction('write')
+  try {
+    const now = nowIso()
+    const tokenHash = hashOpaqueToken(plainToken)
+    const sel = await tx.execute({
+      sql: `SELECT "id","clientId","userId","scope","expiresAt" FROM "OAuth2RefreshToken"
+            WHERE "tokenHash" = ? AND "clientId" = ? AND "expiresAt" > ? AND "revokedAt" IS NULL`,
+      args: [tokenHash, clientId, now],
+    })
+    const row = sel.rows[0] as unknown as Record<string, unknown> | undefined
+    if (!row) {
+      // Reuse of an already rotated token revokes its descendants, not another client's tokens.
+      await tx.execute({
+        sql: `WITH RECURSIVE family(id) AS (
+          SELECT "replacedById" FROM "OAuth2RefreshToken" WHERE "tokenHash" = ? AND "clientId" = ?
+          UNION SELECT r."replacedById" FROM "OAuth2RefreshToken" r JOIN family f ON r."id" = f.id
+        ) UPDATE "OAuth2RefreshToken" SET "revokedAt" = COALESCE("revokedAt", ?)
+          WHERE "id" IN (SELECT id FROM family) AND "clientId" = ?`,
+        args: [tokenHash, clientId, now, clientId],
+      })
+      await tx.commit()
+      return null
+    }
+    if (!scopesAllowed(replacement.scope, String(row.scope))) return null
+    const id = String(row.id)
+    const replacementId = newId()
+    await tx.execute({
+      sql: `UPDATE "OAuth2RefreshToken" SET "revokedAt" = ?, "replacedById" = ? WHERE "id" = ?`,
+      args: [now, replacementId, id],
+    })
+    await tx.execute({
+      sql: `INSERT INTO "OAuth2RefreshToken" ("id","tokenHash","clientId","userId","scope","expiresAt")
+            VALUES (?,?,?,?,?,?)`,
+      args: [replacementId, hashOpaqueToken(replacement.plainToken), clientId, String(row.userId),
+        replacement.scope, String(row.expiresAt)],
+    })
+    await tx.commit()
+    return {
+      id,
+      clientId: String(row.clientId),
+      userId: String(row.userId),
+      scope: String(row.scope),
+      expiresAt: String(row.expiresAt),
+    }
+  } finally {
+    tx.close()
   }
 }
 
 /** RFC 7009：吊销刷新令牌（幂等） */
-export async function revokeRefreshTokenByPlain(plainToken: string): Promise<boolean> {
+export async function revokeRefreshTokenByPlain(plainToken: string, clientId: string): Promise<boolean> {
   const db = getDb()
   const now = nowIso()
   const tokenHash = hashOpaqueToken(plainToken)
-  const sel = await db.execute({
-    sql: `SELECT "id" FROM "OAuth2RefreshToken" WHERE "tokenHash" = ? AND "revokedAt" IS NULL`,
-    args: [tokenHash],
+  const result = await db.execute({
+    sql: `WITH RECURSIVE family(id) AS (
+      SELECT "id" FROM "OAuth2RefreshToken" WHERE "tokenHash" = ? AND "clientId" = ?
+      UNION SELECT r."replacedById" FROM "OAuth2RefreshToken" r JOIN family f ON r."id" = f.id
+    ) UPDATE "OAuth2RefreshToken" SET "revokedAt" = COALESCE("revokedAt", ?)
+      WHERE "id" IN (SELECT id FROM family) AND "clientId" = ?`,
+    args: [tokenHash, clientId, now, clientId],
   })
-  const row = sel.rows[0] as unknown as Record<string, unknown> | undefined
-  if (!row) return false
-  await db.execute({
-    sql: `UPDATE "OAuth2RefreshToken" SET "revokedAt" = ? WHERE "id" = ?`,
-    args: [now, String(row.id)],
-  })
-  return true
+  return result.rowsAffected > 0
 }
 
 export async function getUserClaimsForToken(userId: string): Promise<{
   sub: string
   email?: string
+  emailVerified: boolean
   name?: string
   picture?: string
 } | null> {
   const db = getDb()
   const r = await db.execute({
-    sql: `SELECT "id","email","name","image","avatar" FROM "User" WHERE "id" = ? AND "status" = 1`,
+    sql: `SELECT "id","email","emailVerified","name","image","avatar" FROM "User" WHERE "id" = ? AND "status" = 1`,
     args: [userId],
   })
   const row = r.rows[0] as unknown as Record<string, unknown> | undefined
@@ -320,6 +360,7 @@ export async function getUserClaimsForToken(userId: string): Promise<{
   return {
     sub: String(row.id),
     email: String(row.email),
+    emailVerified: row.emailVerified != null,
     name: String(row.name),
     picture: image || avatar || undefined,
   }

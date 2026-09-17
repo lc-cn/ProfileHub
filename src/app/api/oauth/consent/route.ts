@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomBytes } from 'node:crypto'
+import { getOAuthIssuer } from '@/lib/oauth2/issuer'
+import { readOAuthForm } from '@/lib/oauth2/request'
 import { getServerAuthSession } from '@/lib/session'
 import { clampAuthorizationCodeTtlMinutes, insertAuthorizationCode } from '@/lib/oauth2/store'
 import { oauthErrRedirect, validateAuthorizeSearchParams } from '@/lib/oauth2/validate-authorize'
@@ -9,12 +11,12 @@ import { tenantArchivedBlocksOAuthIssuance } from '@/lib/tenant-lifecycle'
  * 用户同意 / 拒绝授权后签发授权码（RFC 6749）。
  */
 export async function POST(req: NextRequest) {
-  let body: URLSearchParams
-  try {
-    body = new URLSearchParams(await req.text())
-  } catch {
-    return NextResponse.json({ error: 'invalid_request', error_description: '无法解析请求体' }, { status: 400 })
+  // Browser form POSTs carry Origin. Reject missing/foreign origins, including same-site sibling apps.
+  if (req.headers.get('origin') !== new URL(getOAuthIssuer()).origin) {
+    return NextResponse.json({ error: 'invalid_request' }, { status: 403 })
   }
+  const body = await readOAuthForm(req)
+  if (body instanceof NextResponse) return body
 
   const action = body.get('action')
   const sp = new URLSearchParams()
@@ -77,5 +79,6 @@ export async function POST(req: NextRequest) {
   const ok = new URL(redirectUri)
   ok.searchParams.set('code', code)
   if (state) ok.searchParams.set('state', state)
-  return NextResponse.redirect(ok)
+  ok.searchParams.set('iss', getOAuthIssuer())
+  return NextResponse.redirect(ok, 303)
 }

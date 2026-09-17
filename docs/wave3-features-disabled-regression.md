@@ -1,11 +1,11 @@
 # FEATURE_INVITES / FEATURE_OWNER_TRANSFER 关闭时的行为与回归清单
 
-本文档对齐 [GitHub Issue #14](https://github.com/lc-cn/rbac-template/issues/14)：当第三波协作相关开关为**关闭**时，说明 API 的**预期**响应，并提供可勾选的短回归清单，避免将「功能刻意关闭」误报为故障。
+本文档对齐 [GitHub Issue #14](https://github.com/lc-cn/ProfileHub/issues/14)：当第三波协作相关开关为**关闭**时，说明 API 的**预期**响应，并提供可勾选的短回归清单，避免将「功能刻意关闭」误报为故障。
 
 **交叉引用**
 
-- Phase A 运维与环境变量策略：[`docs/phase-a-ops-runbook.md`](phase-a-ops-runbook.md)（Issue [#9](https://github.com/lc-cn/rbac-template/issues/9)），尤其 [§4 环境变量策略](phase-a-ops-runbook.md#4-环境变量策略)、[§4.2 协作功能开关](phase-a-ops-runbook.md#42-协作功能开关-issue-13)、[§4.2.4 关闭态 HTTP 语义](phase-a-ops-runbook.md#424-关闭态-http-语义与回归-issue-14) 与附录 B。
-- 生产是否暴露上述能力的书面结论：Issue [#13](https://github.com/lc-cn/rbac-template/issues/13)；**各环境实际取值须与 #13 结论及附录 B 登记一致**。若 #13 结论为「开启」，仍可用文末 **开启路径 smoke** 做发布验证；若「关闭」或部分关闭，以本文 **关闭路径** 为准。
+- Phase A 运维与环境变量策略：[`docs/phase-a-ops-runbook.md`](phase-a-ops-runbook.md)（Issue [#9](https://github.com/lc-cn/ProfileHub/issues/9)），尤其 [§4 环境变量策略](phase-a-ops-runbook.md#4-环境变量策略)、[§4.2 协作功能开关](phase-a-ops-runbook.md#42-协作功能开关-issue-13)、[§4.2.4 关闭态 HTTP 语义](phase-a-ops-runbook.md#424-关闭态-http-语义与回归-issue-14) 与附录 B。
+- 生产是否暴露上述能力的书面结论：Issue [#13](https://github.com/lc-cn/ProfileHub/issues/13)；**各环境实际取值须与 #13 结论及附录 B 登记一致**。若 #13 结论为「开启」，仍可用文末 **开启路径 smoke** 做发布验证；若「关闭」或部分关闭，以本文 **关闭路径** 为准。
 
 ---
 
