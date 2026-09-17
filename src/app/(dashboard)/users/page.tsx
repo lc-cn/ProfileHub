@@ -24,6 +24,8 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
+import { useManagementAccess } from '@/components/tenant/management-access'
+import { PermissionCodes as ActionCodes } from '@/lib/permission-codes'
 import { useToast } from '@/hooks/use-toast'
 import { useI18n } from '@/i18n/context'
 import { PageShell, PageHeader, CardToolbar } from '@/components/layout/page-shell'
@@ -36,6 +38,7 @@ interface Role {
 }
 
 interface User {
+  tenantRole: 'owner' | 'admin' | 'member'
   id: string
   name: string
   email: string
@@ -45,6 +48,7 @@ interface User {
 }
 
 interface UserFormData {
+  tenantRole?: 'admin' | 'member'
   name: string
   email: string
   password: string
@@ -54,6 +58,12 @@ interface UserFormData {
 
 export default function UsersPage() {
   const { t, locale } = useI18n()
+  const access = useManagementAccess()
+  const canCreate = access.can(ActionCodes.USER_CREATE) && access.manager
+  const canEdit = access.can(ActionCodes.USER_UPDATE) && access.manager
+  const canDelete = access.can(ActionCodes.USER_DELETE) && access.manager
+  const [saving, setSaving] = useState(false)
+  const [removing, setRemoving] = useState(false)
   const [users, setUsers] = useState<User[]>([])
   const [roles, setRoles] = useState<Role[]>([])
   const [search, setSearch] = useState('')
@@ -71,6 +81,7 @@ export default function UsersPage() {
     setLoading(true)
     try {
       const res = await fetch(`/api/users?search=${encodeURIComponent(search)}`)
+      if (!res.ok) throw new Error(t('users.fetchFail'))
       const data = await res.json()
       setUsers(data)
     } catch {
@@ -82,12 +93,13 @@ export default function UsersPage() {
 
   const fetchRoles = useCallback(async () => {
     const res = await fetch('/api/roles')
+    if (!res.ok) return
     const data = await res.json()
     setRoles(data)
   }, [])
 
   useEffect(() => { fetchUsers() }, [fetchUsers])
-  useEffect(() => { fetchRoles() }, [fetchRoles])
+  useEffect(() => { void fetchRoles().catch(() => setRoles([])) }, [fetchRoles])
 
   const openCreate = () => {
     setEditUser(null)
@@ -103,11 +115,14 @@ export default function UsersPage() {
       password: '',
       status: user.status,
       roleIds: user.roles.map(r => r.role.id),
+      tenantRole: user.tenantRole === 'owner' ? undefined : user.tenantRole,
     })
     setDialogOpen(true)
   }
 
   const handleSubmit = async () => {
+    if (saving) return
+    setSaving(true)
     try {
       const url = editUser ? `/api/users/${editUser.id}` : '/api/users'
       const method = editUser ? 'PUT' : 'POST'
@@ -129,11 +144,14 @@ export default function UsersPage() {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error)
       toast({ title: t('common.error'), description: message, variant: 'destructive' })
+    } finally {
+      setSaving(false)
     }
   }
 
   const handleDelete = async () => {
-    if (!deleteId) return
+    if (!deleteId || removing) return
+    setRemoving(true)
     try {
       const res = await fetch(`/api/users/${deleteId}`, { method: 'DELETE' })
       if (!res.ok) throw new Error(t('users.deleteFail'))
@@ -142,6 +160,7 @@ export default function UsersPage() {
     } catch {
       toast({ title: t('common.error'), description: t('users.deleteFail'), variant: 'destructive' })
     } finally {
+      setRemoving(false)
       setDeleteId(null)
     }
   }
@@ -161,7 +180,7 @@ export default function UsersPage() {
         title={t('users.title')}
         description={t('users.subtitle')}
         actions={
-          <Button className="w-full shrink-0 sm:w-auto" onClick={openCreate}>
+          <Button className="w-full shrink-0 sm:w-auto" disabled={!canCreate} title={!canCreate ? t('experience.readOnly') : undefined} onClick={openCreate}>
             <Plus className="mr-2 h-4 w-4" /> {t('users.create')}
           </Button>
         }
@@ -189,6 +208,7 @@ export default function UsersPage() {
                 <tr className="border-b border-border">
                   <th className="app-table-head">{t('users.colName')}</th>
                   <th className="app-table-head">{t('users.colEmail')}</th>
+                  <th className="app-table-head">{t('experience.orgRole')}</th>
                   <th className="app-table-head">{t('users.colRoles')}</th>
                   <th className="app-table-head">{t('users.colStatus')}</th>
                   <th className="app-table-head">{t('common.createdAt')}</th>
@@ -197,19 +217,19 @@ export default function UsersPage() {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={6} className="py-8 text-center text-muted-foreground">{t('common.loading')}</td></tr>
+                  <tr><td colSpan={7} className="py-8 text-center text-muted-foreground">{t('common.loading')}</td></tr>
                 ) : users.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="p-0">
+                    <td colSpan={7} className="p-0">
                       <div className="flex flex-col items-center justify-center gap-4 px-6 py-14 text-center sm:py-16">
                         <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
                           <Users className="h-5 w-5" aria-hidden />
                         </div>
                         <div className="max-w-sm space-y-2">
-                          <p className="text-base font-semibold text-foreground">{t('users.emptyTitle')}</p>
-                          <p className="text-sm leading-relaxed text-muted-foreground">{t('users.emptyDesc')}</p>
+                          <p className="text-base font-semibold text-foreground">{t(search.trim() ? 'experience.noResults' : 'users.emptyTitle')}</p>
+                          <p className="text-sm leading-relaxed text-muted-foreground">{t(search.trim() ? 'experience.searchHint' : 'users.emptyDesc')}</p>
                         </div>
-                        <Button type="button" onClick={openCreate} className="gap-2">
+                        <Button type="button" disabled={!canCreate} title={!canCreate ? t('experience.readOnly') : undefined} onClick={openCreate} className="gap-2">
                           <Plus className="h-4 w-4" />
                           {t('users.emptyCta')}
                         </Button>
@@ -220,6 +240,7 @@ export default function UsersPage() {
                   <tr key={user.id} className="border-b border-border hover:bg-muted/50">
                     <td className="app-table-cell font-medium">{user.name}</td>
                     <td className="app-table-cell text-muted-foreground">{user.email}</td>
+                    <td className="app-table-cell">{t(`organizationsCurrent.members.role${user.tenantRole === 'owner' ? 'Owner' : user.tenantRole === 'admin' ? 'Admin' : 'Member'}`)}</td>
                     <td className="app-table-cell">
                       <div className="flex flex-wrap gap-1">
                         {user.roles.map(r => (
@@ -237,10 +258,10 @@ export default function UsersPage() {
                     </td>
                     <td className="app-table-cell app-table-cell-end">
                       <div className="app-row-actions">
-                        <Button variant="ghost" size="sm" onClick={() => openEdit(user)}>
+                        <Button variant="ghost" size="sm" aria-label={t('experience.edit') + ' ' + user.name} disabled={!canEdit} title={!canEdit ? t('experience.readOnly') : undefined} onClick={() => openEdit(user)}>
                           <Pencil className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => setDeleteId(user.id)}>
+                        <Button variant="ghost" size="sm" aria-label={t('experience.remove') + ' ' + user.name} disabled={!canDelete || user.tenantRole === 'owner'} title={!canDelete ? t('experience.readOnly') : undefined} onClick={() => setDeleteId(user.id)}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
@@ -259,6 +280,14 @@ export default function UsersPage() {
             <DialogTitle>{editUser ? t('users.editTitle') : t('users.createTitle')}</DialogTitle>
           </DialogHeader>
           <div className="app-dialog-body">
+            <p className="rounded-lg bg-muted p-3 text-sm text-muted-foreground">{t('experience.accountScope')}</p>
+            {editUser && editUser.tenantRole !== 'owner' && <div className="app-form-field">
+              <Label htmlFor="governance-role">{t('experience.orgRole')}</Label>
+              <select id="governance-role" className="h-10 rounded-md border bg-background px-3" value={form.tenantRole || 'member'} onChange={e => setForm(p => ({ ...p, tenantRole: e.target.value as 'admin' | 'member' }))}>
+                <option value="member">{t('organizationsCurrent.members.roleMember')}</option>
+                <option value="admin">{t('organizationsCurrent.members.roleAdmin')}</option>
+              </select>
+            </div>}
             <div className="app-form-field">
               <Label htmlFor="name">{t('users.colName')}</Label>
               <Input id="name" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} />
@@ -305,7 +334,7 @@ export default function UsersPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>{t('common.cancel')}</Button>
-            <Button onClick={handleSubmit}>{t('common.save')}</Button>
+            <Button disabled={saving || (!canCreate && !canEdit)} onClick={handleSubmit}>{t(saving ? 'experience.saving' : 'common.save')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -313,12 +342,12 @@ export default function UsersPage() {
       <AlertDialog open={!!deleteId} onOpenChange={open => !open && setDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{t('common.confirmDelete')}</AlertDialogTitle>
-            <AlertDialogDescription>{t('users.deleteConfirm')}</AlertDialogDescription>
+            <AlertDialogTitle>{t('experience.remove')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('users.deleteConfirm', { name: users.find(user => user.id === deleteId)?.name || '' })}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">{t('common.delete')}</AlertDialogAction>
+            <AlertDialogAction disabled={removing || !canDelete} onClick={handleDelete} className="bg-red-600 hover:bg-red-700">{t('experience.remove')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

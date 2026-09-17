@@ -75,7 +75,17 @@ export function SidebarNav({
     icon: iconByHref[row.href] ?? LayoutDashboard,
   }))
 
-  const allNav = [...tenantNav, ...platformItem]
+  const groups = [
+    { label: 'experience.groupOrg', paths: ['/', '/organizations/current', '/users'] },
+    { label: 'experience.groupApps', paths: ['/applications', '/features', '/permissions', '/roles'] },
+    { label: 'experience.groupAccount', paths: ['/profile'] },
+    { label: 'experience.groupPlatform', paths: ['/platform', '/system-config'] },
+  ]
+  const items = [...tenantNav, ...platformItem]
+  const allNav = groups.flatMap(group => group.paths.flatMap(href => {
+    const item = items.find(item => item.href === href)
+    return item ? [{ ...item, group: group.label }] : []
+  }))
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -122,13 +132,16 @@ export function SidebarNav({
         )}
       >
         <ul className="space-y-1">
-          {allNav.map((item) => {
+          {allNav.map((item, index) => {
             const Icon = item.icon
             const isActive =
               pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href))
             const label = t(item.labelKey)
             return (
               <li key={item.href}>
+                {!collapsed && (index === 0 || allNav[index - 1].group !== item.group) && (
+                  <p className="px-3 pb-2 pt-4 text-xs font-medium text-muted-foreground">{t(item.group)}</p>
+                )}
                 <Link
                   href={item.href}
                   onClick={() => onLinkClick?.()}
@@ -165,7 +178,7 @@ export function SidebarNav({
           </Button>
         ) : null}
         <p className={cn('text-center text-xs text-muted-foreground', collapsed && 'text-[0.65rem] leading-tight')}>
-          {collapsed ? 'v1' : `${t('common.version')} 1.0.0`}
+          {collapsed ? 'PH' : 'ProfileHub'}
         </p>
       </div>
     </div>

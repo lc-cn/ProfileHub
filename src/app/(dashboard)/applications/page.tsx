@@ -17,6 +17,8 @@ import {
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
+import { useManagementAccess } from '@/components/tenant/management-access'
+import { PermissionCodes as ActionCodes } from '@/lib/permission-codes'
 import { useToast } from '@/hooks/use-toast'
 import { useI18n } from '@/i18n/context'
 import { PageShell, PageHeader, CardToolbar } from '@/components/layout/page-shell'
@@ -38,6 +40,12 @@ interface Application {
 export default function ApplicationsPage() {
   const { data: session } = useSession()
   const { t, locale } = useI18n()
+  const access = useManagementAccess()
+  const canCreate = access.can(ActionCodes.APPLICATION_CREATE)
+  const canEdit = access.can(ActionCodes.APPLICATION_UPDATE)
+  const canDelete = access.can(ActionCodes.APPLICATION_DELETE)
+  const [saving, setSaving] = useState(false)
+  const [removing, setRemoving] = useState(false)
   const canManageIdp = sessionHasTenantRead(session, PermissionCodes.OAUTH_CLIENT_READ)
   const [apps, setApps] = useState<Application[]>([])
   const [search, setSearch] = useState('')
@@ -53,6 +61,7 @@ export default function ApplicationsPage() {
     setLoading(true)
     try {
       const res = await fetch(`/api/applications?search=${encodeURIComponent(search)}`)
+      if (!res.ok) throw new Error(t('applications.fetchFail'))
       setApps(await res.json())
     } catch {
       toast({ title: t('common.error'), description: t('applications.fetchFail'), variant: 'destructive' })
@@ -80,6 +89,8 @@ export default function ApplicationsPage() {
   }
 
   const handleSubmit = async () => {
+    if (saving) return
+    setSaving(true)
     try {
       const url = editApp ? `/api/applications/${editApp.id}` : '/api/applications'
       const res = await fetch(url, {
@@ -97,11 +108,14 @@ export default function ApplicationsPage() {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error)
       toast({ title: t('common.error'), description: message, variant: 'destructive' })
+    } finally {
+      setSaving(false)
     }
   }
 
   const handleDelete = async () => {
-    if (!deleteId) return
+    if (!deleteId || removing) return
+    setRemoving(true)
     try {
       const res = await fetch(`/api/applications/${deleteId}`, { method: 'DELETE' })
       if (!res.ok) throw new Error(t('applications.deleteFail'))
@@ -110,6 +124,7 @@ export default function ApplicationsPage() {
     } catch {
       toast({ title: t('common.error'), description: t('applications.deleteFail'), variant: 'destructive' })
     } finally {
+      setRemoving(false)
       setDeleteId(null)
     }
   }
@@ -120,7 +135,7 @@ export default function ApplicationsPage() {
         title={t('applications.title')}
         description={t('applications.subtitle')}
         actions={
-          <Button className="w-full shrink-0 sm:w-auto" onClick={openCreate}>
+          <Button className="w-full shrink-0 sm:w-auto" disabled={!canCreate} title={!canCreate ? t('experience.readOnly') : undefined} onClick={openCreate}>
             <Plus className="mr-2 h-4 w-4" />
             {t('applications.create')}
           </Button>
@@ -183,8 +198,8 @@ export default function ApplicationsPage() {
                   <td className="app-table-cell text-muted-foreground">{new Date(app.createdAt).toLocaleDateString(dateLocale)}</td>
                   <td className="app-table-cell app-table-cell-end">
                     <div className="app-row-actions">
-                      <Button variant="ghost" size="sm" onClick={() => openEdit(app)}><Pencil className="h-4 w-4" /></Button>
-                      <Button variant="ghost" size="sm" onClick={() => setDeleteId(app.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                      <Button variant="ghost" size="sm" aria-label={t('experience.edit') + ' ' + app.name} disabled={!canEdit} title={!canEdit ? t('experience.readOnly') : undefined} onClick={() => openEdit(app)}><Pencil className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="sm" aria-label={t('common.delete') + ' ' + app.name} disabled={!canDelete} title={!canDelete ? t('experience.readOnly') : undefined} onClick={() => setDeleteId(app.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                     </div>
                   </td>
                 </tr>
@@ -218,7 +233,7 @@ export default function ApplicationsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>{t('common.cancel')}</Button>
-            <Button onClick={handleSubmit}>{t('common.save')}</Button>
+            <Button disabled={saving || (!canCreate && !canEdit)} onClick={handleSubmit}>{t(saving ? 'experience.saving' : 'common.save')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -231,7 +246,7 @@ export default function ApplicationsPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">{t('common.delete')}</AlertDialogAction>
+            <AlertDialogAction disabled={removing || !canDelete} onClick={handleDelete} className="bg-red-600 hover:bg-red-700">{t('common.delete')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

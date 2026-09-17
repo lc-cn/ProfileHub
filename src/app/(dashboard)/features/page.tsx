@@ -17,6 +17,8 @@ import {
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { useManagementAccess } from '@/components/tenant/management-access'
+import { PermissionCodes as ActionCodes } from '@/lib/permission-codes'
 import { useToast } from '@/hooks/use-toast'
 import { useI18n } from '@/i18n/context'
 import { PageShell, PageHeader, CardToolbar } from '@/components/layout/page-shell'
@@ -41,6 +43,12 @@ interface Feature {
 
 export default function FeaturesPage() {
   const { t, locale } = useI18n()
+  const access = useManagementAccess()
+  const canCreate = access.can(ActionCodes.FEATURE_CREATE)
+  const canEdit = access.can(ActionCodes.FEATURE_UPDATE)
+  const canDelete = access.can(ActionCodes.FEATURE_DELETE)
+  const [saving, setSaving] = useState(false)
+  const [removing, setRemoving] = useState(false)
   const [features, setFeatures] = useState<Feature[]>([])
   const [applications, setApplications] = useState<Application[]>([])
   const [search, setSearch] = useState('')
@@ -83,6 +91,8 @@ export default function FeaturesPage() {
   }
 
   const handleSubmit = async () => {
+    if (saving) return
+    setSaving(true)
     try {
       const url = editFeature ? `/api/features/${editFeature.id}` : '/api/features'
       const res = await fetch(url, {
@@ -100,11 +110,14 @@ export default function FeaturesPage() {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error)
       toast({ title: t('common.error'), description: message, variant: 'destructive' })
+    } finally {
+      setSaving(false)
     }
   }
 
   const handleDelete = async () => {
-    if (!deleteId) return
+    if (!deleteId || removing) return
+    setRemoving(true)
     try {
       const res = await fetch(`/api/features/${deleteId}`, { method: 'DELETE' })
       if (!res.ok) throw new Error(t('features.deleteFail'))
@@ -113,6 +126,7 @@ export default function FeaturesPage() {
     } catch {
       toast({ title: t('common.error'), description: t('features.deleteFail'), variant: 'destructive' })
     } finally {
+      setRemoving(false)
       setDeleteId(null)
     }
   }
@@ -123,7 +137,7 @@ export default function FeaturesPage() {
         title={t('features.title')}
         description={t('features.subtitle')}
         actions={
-          <Button className="w-full shrink-0 sm:w-auto" onClick={openCreate}>
+          <Button className="w-full shrink-0 sm:w-auto" disabled={!canCreate} title={!canCreate ? t('experience.readOnly') : undefined} onClick={openCreate}>
             <Plus className="mr-2 h-4 w-4" />
             {t('features.create')}
           </Button>
@@ -169,8 +183,8 @@ export default function FeaturesPage() {
                   <td className="app-table-cell text-muted-foreground">{new Date(f.createdAt).toLocaleDateString(dateLocale)}</td>
                   <td className="app-table-cell app-table-cell-end">
                     <div className="app-row-actions">
-                      <Button variant="ghost" size="sm" onClick={() => openEdit(f)}><Pencil className="h-4 w-4" /></Button>
-                      <Button variant="ghost" size="sm" onClick={() => setDeleteId(f.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                      <Button variant="ghost" size="sm" aria-label={t('experience.edit') + ' ' + f.name} disabled={!canEdit} title={!canEdit ? t('experience.readOnly') : undefined} onClick={() => openEdit(f)}><Pencil className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="sm" aria-label={t('common.delete') + ' ' + f.name} disabled={!canDelete} title={!canDelete ? t('experience.readOnly') : undefined} onClick={() => setDeleteId(f.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                     </div>
                   </td>
                 </tr>
@@ -213,7 +227,7 @@ export default function FeaturesPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>{t('common.cancel')}</Button>
-            <Button onClick={handleSubmit}>{t('common.save')}</Button>
+            <Button disabled={saving || (!canCreate && !canEdit)} onClick={handleSubmit}>{t(saving ? 'experience.saving' : 'common.save')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -226,7 +240,7 @@ export default function FeaturesPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">{t('common.delete')}</AlertDialogAction>
+            <AlertDialogAction disabled={removing || !canDelete} onClick={handleDelete} className="bg-red-600 hover:bg-red-700">{t('common.delete')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

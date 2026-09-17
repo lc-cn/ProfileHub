@@ -1,3 +1,4 @@
+import { SESSION_MAX_AGE_SECONDS } from '@/lib/session-policy'
 import NextAuth from 'next-auth'
 import type { NextAuthConfig } from 'next-auth'
 import { encode as defaultEncode } from 'next-auth/jwt'
@@ -58,7 +59,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   secret: getAuthSecret(),
   session: {
     strategy: 'jwt',
-    maxAge: 60 * 60 * 24 * 7,
+    maxAge: SESSION_MAX_AGE_SECONDS,
   },
   pages: {
     signIn: '/login',

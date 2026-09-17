@@ -15,12 +15,15 @@ import {
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Textarea } from '@/components/ui/textarea'
+import { useManagementAccess } from '@/components/tenant/management-access'
+import { PermissionCodes as ActionCodes } from '@/lib/permission-codes'
 import { useToast } from '@/hooks/use-toast'
 import { useI18n } from '@/i18n/context'
 import { PageShell, PageHeader, CardToolbar } from '@/components/layout/page-shell'
 import { Plus, Pencil, Trash2, Search } from 'lucide-react'
 
 interface Permission {
+  feature?: { name: string; application?: { name: string } }
   id: string
   name: string
   code: string
@@ -37,9 +40,16 @@ interface Role {
 
 export default function RolesPage() {
   const { t, locale } = useI18n()
+  const access = useManagementAccess()
+  const canCreate = access.can(ActionCodes.ROLE_CREATE)
+  const canEdit = access.can(ActionCodes.ROLE_UPDATE)
+  const canDelete = access.can(ActionCodes.ROLE_DELETE)
+  const [saving, setSaving] = useState(false)
+  const [removing, setRemoving] = useState(false)
   const [roles, setRoles] = useState<Role[]>([])
   const [permissions, setPermissions] = useState<Permission[]>([])
   const [search, setSearch] = useState('')
+  const [permissionSearch, setPermissionSearch] = useState('')
   const [loading, setLoading] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [deleteId, setDeleteId] = useState<string | null>(null)
@@ -52,6 +62,7 @@ export default function RolesPage() {
     setLoading(true)
     try {
       const res = await fetch(`/api/roles?search=${encodeURIComponent(search)}`)
+      if (!res.ok) throw new Error(t('roles.fetchFail'))
       setRoles(await res.json())
     } catch {
       toast({ title: t('common.error'), description: t('roles.fetchFail'), variant: 'destructive' })
@@ -62,11 +73,11 @@ export default function RolesPage() {
 
   const fetchPermissions = useCallback(async () => {
     const res = await fetch('/api/permissions')
-    setPermissions(await res.json())
+    if (res.ok) setPermissions(await res.json())
   }, [])
 
   useEffect(() => { fetchRoles() }, [fetchRoles])
-  useEffect(() => { fetchPermissions() }, [fetchPermissions])
+  useEffect(() => { void fetchPermissions().catch(() => setPermissions([])) }, [fetchPermissions])
 
   const openCreate = () => {
     setEditRole(null)
@@ -85,6 +96,8 @@ export default function RolesPage() {
   }
 
   const handleSubmit = async () => {
+    if (saving) return
+    setSaving(true)
     try {
       const url = editRole ? `/api/roles/${editRole.id}` : '/api/roles'
       const res = await fetch(url, {
@@ -102,11 +115,14 @@ export default function RolesPage() {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error)
       toast({ title: t('common.error'), description: message, variant: 'destructive' })
+    } finally {
+      setSaving(false)
     }
   }
 
   const handleDelete = async () => {
-    if (!deleteId) return
+    if (!deleteId || removing) return
+    setRemoving(true)
     try {
       const res = await fetch(`/api/roles/${deleteId}`, { method: 'DELETE' })
       if (!res.ok) throw new Error(t('roles.deleteFail'))
@@ -115,6 +131,7 @@ export default function RolesPage() {
     } catch {
       toast({ title: t('common.error'), description: t('roles.deleteFail'), variant: 'destructive' })
     } finally {
+      setRemoving(false)
       setDeleteId(null)
     }
   }
@@ -134,7 +151,7 @@ export default function RolesPage() {
         title={t('roles.title')}
         description={t('roles.subtitle')}
         actions={
-          <Button className="w-full shrink-0 sm:w-auto" onClick={openCreate}>
+          <Button className="w-full shrink-0 sm:w-auto" disabled={!canCreate} title={!canCreate ? t('experience.readOnly') : undefined} onClick={openCreate}>
             <Plus className="mr-2 h-4 w-4" />
             {t('roles.create')}
           </Button>
@@ -178,8 +195,8 @@ export default function RolesPage() {
                   <td className="app-table-cell text-muted-foreground">{new Date(role.createdAt).toLocaleDateString(dateLocale)}</td>
                   <td className="app-table-cell app-table-cell-end">
                     <div className="app-row-actions">
-                      <Button variant="ghost" size="sm" onClick={() => openEdit(role)}><Pencil className="h-4 w-4" /></Button>
-                      <Button variant="ghost" size="sm" onClick={() => setDeleteId(role.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                      <Button variant="ghost" size="sm" aria-label={t('experience.edit') + ' ' + role.name} disabled={!canEdit} title={!canEdit ? t('experience.readOnly') : undefined} onClick={() => openEdit(role)}><Pencil className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="sm" aria-label={t('common.delete') + ' ' + role.name} disabled={!canDelete} title={!canDelete ? t('experience.readOnly') : undefined} onClick={() => setDeleteId(role.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                     </div>
                   </td>
                 </tr>
@@ -203,9 +220,11 @@ export default function RolesPage() {
               <Textarea value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} rows={2} />
             </div>
             <div className="app-form-field">
-              <Label>{t('roles.assignPermissions')}</Label>
+              <Label htmlFor="permission-filter">{t('roles.assignPermissions')}</Label>
+              <Input id="permission-filter" value={permissionSearch} onChange={e => setPermissionSearch(e.target.value)} placeholder={t('experience.permissionSearch')} />
+              <p className="text-sm text-muted-foreground">{t('experience.selected', { count: form.permissionIds.length })}</p>
               <div className="app-picker-grid">
-                {permissions.map(perm => (
+                {permissions.filter(perm => `${perm.name} ${perm.code} ${perm.feature?.name || ''} ${perm.feature?.application?.name || ''}`.toLowerCase().includes(permissionSearch.toLowerCase())).sort((a, b) => `${a.feature?.application?.name}/${a.feature?.name}`.localeCompare(`${b.feature?.application?.name}/${b.feature?.name}`)).map(perm => (
                   <div key={perm.id} className="app-picker-item">
                     <Checkbox
                       id={`perm-${perm.id}`}
@@ -216,6 +235,7 @@ export default function RolesPage() {
                       htmlFor={`perm-${perm.id}`}
                       className="inline min-w-0 flex-1 cursor-pointer font-normal leading-snug"
                     >
+                      <span className="block text-xs text-muted-foreground">{perm.feature?.application?.name} / {perm.feature?.name}</span>
                       <span className="block text-foreground">{perm.name}</span>
                       <span className="mt-0.5 block font-mono text-[0.7rem] text-muted-foreground">{perm.code}</span>
                     </Label>
@@ -229,7 +249,7 @@ export default function RolesPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>{t('common.cancel')}</Button>
-            <Button onClick={handleSubmit}>{t('common.save')}</Button>
+            <Button disabled={saving || (!canCreate && !canEdit)} onClick={handleSubmit}>{t(saving ? 'experience.saving' : 'common.save')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -238,11 +258,11 @@ export default function RolesPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('common.confirmDelete')}</AlertDialogTitle>
-            <AlertDialogDescription>{t('roles.deleteConfirm')}</AlertDialogDescription>
+            <AlertDialogDescription>{t('roles.deleteConfirm', { name: roles.find(role => role.id === deleteId)?.name || '', count: roles.find(role => role.id === deleteId)?.users.length || 0 })}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">{t('common.delete')}</AlertDialogAction>
+            <AlertDialogAction disabled={removing || !canDelete} onClick={handleDelete} className="bg-red-600 hover:bg-red-700">{t('common.delete')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

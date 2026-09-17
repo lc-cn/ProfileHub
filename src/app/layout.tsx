@@ -8,8 +8,8 @@ import { cn } from '@/lib/utils'
 const inter = Inter({ subsets: ['latin'], display: 'swap' })
 
 export const metadata: Metadata = {
-  title: 'RBAC 管理系统',
-  description: '基于角色的访问控制管理系统',
+  title: 'ProfileHub',
+  description: '统一身份、组织与应用访问管理',
 }
 
 export const viewport: Viewport = {

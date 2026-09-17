@@ -19,6 +19,7 @@ export default async function ApplicationIdpPage({ params }: PageProps) {
 
   return (
     <ApplicationIdpFormPage
+      issuer={(process.env.OAUTH_ISSUER_URL || process.env.NEXTAUTH_URL || '').trim().replace(/\/+$/, '')}
       applicationId={id}
       applicationName={app.name}
       mode={mode}

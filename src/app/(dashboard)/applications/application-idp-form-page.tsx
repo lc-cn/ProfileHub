@@ -4,6 +4,9 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ChevronRight } from 'lucide-react'
+import { ConnectionDetails } from '@/components/oauth/connection-details'
+import { useManagementAccess } from '@/components/tenant/management-access'
+import { PermissionCodes } from '@/lib/permission-codes'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardFooter } from '@/components/ui/card'
@@ -29,7 +32,6 @@ const SECTION_IDS = {
   branding: 'idp-sec-branding',
   callbacks: 'idp-sec-callbacks',
   security: 'idp-sec-security',
-  advanced: 'idp-sec-advanced',
 } as const
 
 function scrollToSection(id: string) {
@@ -70,16 +72,20 @@ function RequiredFieldLabel({ htmlFor, children }: { htmlFor?: string; children:
 
 export function ApplicationIdpFormPage({
   applicationId,
+  issuer,
   applicationName,
   mode,
   initialRow,
 }: {
   applicationId: string
+  issuer: string
   applicationName: string
   mode: 'create' | 'edit'
   initialRow?: OAuth2ClientDto | null
 }) {
   const { t } = useI18n()
+  const access = useManagementAccess()
+  const canWrite = access.can(PermissionCodes.OAUTH_CLIENT_WRITE)
   const { toast } = useToast()
   const router = useRouter()
   const [form, setForm] = useState<OAuth2ClientFormState>(() =>
@@ -96,7 +102,6 @@ export function ApplicationIdpFormPage({
       { id: SECTION_IDS.branding, label: t('oauth2Clients.sectionBranding') },
       { id: SECTION_IDS.callbacks, label: t('oauth2Clients.sectionCallbacks') },
       { id: SECTION_IDS.security, label: t('oauth2Clients.sectionSecurity') },
-      { id: SECTION_IDS.advanced, label: t('oauth2Clients.sectionAdvanced') },
     ],
     [t]
   )
@@ -152,6 +157,7 @@ export function ApplicationIdpFormPage({
   }
 
   const handleSubmit = async () => {
+    if (!canWrite || busy) return
     if (form.scopeOffline && !form.grantRefreshToken) {
       toast({
         title: t('common.error'),
@@ -179,7 +185,7 @@ export function ApplicationIdpFormPage({
           setFlashSecret(String(data.clientSecret))
           setForm((p) => ({ ...p, clientSecret: '', regenerateSecret: false }))
         } else {
-          router.push('/applications')
+          router.refresh()
         }
       } else {
         const res = await fetch(`/api/applications/${applicationId}/oauth`, {
@@ -195,7 +201,8 @@ export function ApplicationIdpFormPage({
           sessionStorage.setItem(SECRET_FLASH_KEY, JSON.stringify({ id: applicationId, secret }))
           router.replace(`/applications/${applicationId}/idp`)
         } else {
-          router.push('/applications')
+          router.replace(`/applications/${applicationId}/idp`)
+          router.refresh()
         }
       }
     } catch (error: unknown) {
@@ -212,6 +219,8 @@ export function ApplicationIdpFormPage({
 
   return (
     <PageShell mainVariant="narrow" className="max-w-5xl">
+      {initialRow && <ConnectionDetails issuer={issuer} clientId={initialRow.clientId} callbacks={initialRow.redirectUris} />}
+      {!canWrite && <p role="status" className="rounded-lg bg-muted p-3 text-sm">{t('experience.readOnly')}</p>}
       <div className="flex flex-col gap-6 border-b border-border/80 pb-8 sm:flex-row sm:items-start sm:justify-between sm:pb-10">
         <div className="min-w-0 space-y-3">
           <nav
@@ -288,6 +297,7 @@ export function ApplicationIdpFormPage({
               </div>
             ) : null}
 
+            <fieldset disabled={!canWrite || busy} className="space-y-10">
             <Section id={SECTION_IDS.basic} title={t('oauth2Clients.sectionBasic')}>
               <div className="app-form-field">
                 <RequiredFieldLabel htmlFor="idp-name">{t('oauth2Clients.colName')}</RequiredFieldLabel>
@@ -580,18 +590,8 @@ export function ApplicationIdpFormPage({
               ) : null}
             </Section>
 
-            <Section id={SECTION_IDS.advanced} title={t('oauth2Clients.sectionAdvanced')}>
-              <div className="app-form-field">
-                <Label className="text-sm font-semibold text-foreground">{t('oauth2Clients.jwksUri')}</Label>
-                <Input
-                  value={form.jwksUri}
-                  onChange={(e) => setForm((p) => ({ ...p, jwksUri: e.target.value }))}
-                  placeholder="https://rp.example.com/.well-known/jwks.json"
-                  className="font-mono text-xs"
-                />
-                <FieldHint text={t('oauth2Clients.hintJwks')} />
-              </div>
-            </Section>
+
+            </fieldset>
           </CardContent>
           <CardFooter className="flex flex-wrap items-center justify-end gap-3 border-t border-border/60 bg-muted/15 px-5 py-4 sm:px-8">
             <Button type="button" variant="ghost" className="text-muted-foreground" disabled={busy} onClick={() => router.push('/applications')}>
@@ -599,7 +599,7 @@ export function ApplicationIdpFormPage({
             </Button>
             <Button
               type="button"
-              disabled={busy || showSecretBanner}
+              disabled={!canWrite || busy || showSecretBanner}
               onClick={() => void handleSubmit()}
               className="min-w-[7.5rem] bg-emerald-600 font-semibold text-white shadow-sm hover:bg-emerald-700 dark:bg-emerald-600 dark:hover:bg-emerald-500"
             >

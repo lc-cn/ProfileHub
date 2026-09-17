@@ -267,6 +267,7 @@ export function ProfileSecurityCard(props: { hasPassword: boolean }) {
       <Card className="mx-auto w-full max-w-xl">
         <CardHeader>
           <CardTitle className="text-base">{t('profile.sectionSecurity')}</CardTitle>
+          <p className="text-sm text-muted-foreground">{t('experience.securityHint')}</p>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">{t('common.loading')}</p>
@@ -280,6 +281,7 @@ export function ProfileSecurityCard(props: { hasPassword: boolean }) {
       <Card className="mx-auto w-full max-w-xl">
         <CardHeader>
           <CardTitle className="text-base">{t('profile.sectionSecurity')}</CardTitle>
+          <p className="text-sm text-muted-foreground">{t('experience.securityHint')}</p>
         </CardHeader>
         <CardContent className="space-y-6">
           <p className="text-sm text-muted-foreground">
@@ -315,9 +317,9 @@ export function ProfileSecurityCard(props: { hasPassword: boolean }) {
               {status.passkeys.map((p) => (
                 <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/50 px-3 py-2">
                   <span>
-                    {p.label || 'Passkey'} · {p.canLogin ? 'Login' : ''}
+                    {p.label || 'Passkey'} · {p.canLogin ? t('profile.canLogin') : ''}
                     {p.canLogin && p.canMfa ? ' · ' : ''}
-                    {p.canMfa ? 'MFA' : ''}
+                    {p.canMfa ? t('profile.canMfa') : ''}
                   </span>
                   <Button type="button" variant="outline" size="sm" onClick={() => void deletePasskey(p.id)}>
                     {t('common.delete')}
@@ -348,7 +350,8 @@ export function ProfileSecurityCard(props: { hasPassword: boolean }) {
               ) : null}
               {totpOtpauth ? (
                 <div className="space-y-3">
-                  <p className="break-all text-xs text-muted-foreground">{totpOtpauth}</p>
+                  <p className="text-sm text-muted-foreground">{t('experience.totpHint')}</p>
+                  <p className="break-all rounded border p-3 font-mono text-xs">{totpOtpauth}</p>
                   <div className="app-form-field">
                     <Label htmlFor="totp-code">{t('mfa.totpLabel')}</Label>
                     <Input id="totp-code" className="w-full" value={totpCode} onChange={(e) => setTotpCode(e.target.value)} />

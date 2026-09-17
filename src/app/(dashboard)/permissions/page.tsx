@@ -20,6 +20,8 @@ import {
 } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { useManagementAccess } from '@/components/tenant/management-access'
+import { PermissionCodes as ActionCodes } from '@/lib/permission-codes'
 import { useToast } from '@/hooks/use-toast'
 import { useI18n } from '@/i18n/context'
 import { PageShell, PageHeader, CardToolbar } from '@/components/layout/page-shell'
@@ -51,6 +53,12 @@ interface Permission {
 
 export default function PermissionsPage() {
   const { t } = useI18n()
+  const access = useManagementAccess()
+  const canCreate = access.can(ActionCodes.PERM_CREATE)
+  const canEdit = access.can(ActionCodes.PERM_UPDATE)
+  const canDelete = access.can(ActionCodes.PERM_DELETE)
+  const [saving, setSaving] = useState(false)
+  const [removing, setRemoving] = useState(false)
   const [permissions, setPermissions] = useState<Permission[]>([])
   const [features, setFeatures] = useState<Feature[]>([])
   const [applications, setApplications] = useState<Application[]>([])
@@ -106,6 +114,8 @@ export default function PermissionsPage() {
   }
 
   const handleSubmit = async () => {
+    if (saving) return
+    setSaving(true)
     try {
       const url = editPerm ? `/api/permissions/${editPerm.id}` : '/api/permissions'
       const res = await fetch(url, {
@@ -123,11 +133,14 @@ export default function PermissionsPage() {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error)
       toast({ title: t('common.error'), description: message, variant: 'destructive' })
+    } finally {
+      setSaving(false)
     }
   }
 
   const handleDelete = async () => {
-    if (!deleteId) return
+    if (!deleteId || removing) return
+    setRemoving(true)
     try {
       const res = await fetch(`/api/permissions/${deleteId}`, { method: 'DELETE' })
       if (!res.ok) throw new Error(t('permissions.deleteFail'))
@@ -136,6 +149,7 @@ export default function PermissionsPage() {
     } catch {
       toast({ title: t('common.error'), description: t('permissions.deleteFail'), variant: 'destructive' })
     } finally {
+      setRemoving(false)
       setDeleteId(null)
     }
   }
@@ -146,7 +160,7 @@ export default function PermissionsPage() {
         title={t('permissions.title')}
         description={t('permissions.subtitle')}
         actions={
-          <Button className="w-full shrink-0 sm:w-auto" onClick={openCreate}>
+          <Button className="w-full shrink-0 sm:w-auto" disabled={!canCreate} title={!canCreate ? t('experience.readOnly') : undefined} onClick={openCreate}>
             <Plus className="mr-2 h-4 w-4" />
             {t('permissions.create')}
           </Button>
@@ -212,8 +226,8 @@ export default function PermissionsPage() {
                               <td className="app-table-cell text-muted-foreground">{perm.description || '-'}</td>
                               <td className="app-table-cell app-table-cell-end">
                                 <div className="app-row-actions">
-                                  <Button variant="ghost" size="sm" onClick={() => openEdit(perm)}><Pencil className="h-3 w-3" /></Button>
-                                  <Button variant="ghost" size="sm" onClick={() => setDeleteId(perm.id)}><Trash2 className="h-3 w-3 text-destructive" /></Button>
+                                  <Button variant="ghost" size="sm" aria-label={t('experience.edit') + ' ' + perm.name} disabled={!canEdit} title={!canEdit ? t('experience.readOnly') : undefined} onClick={() => openEdit(perm)}><Pencil className="h-3 w-3" /></Button>
+                                  <Button variant="ghost" size="sm" aria-label={t('common.delete') + ' ' + perm.name} disabled={!canDelete} title={!canDelete ? t('experience.readOnly') : undefined} onClick={() => setDeleteId(perm.id)}><Trash2 className="h-3 w-3 text-destructive" /></Button>
                                 </div>
                               </td>
                             </tr>
@@ -267,7 +281,7 @@ export default function PermissionsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>{t('common.cancel')}</Button>
-            <Button onClick={handleSubmit}>{t('common.save')}</Button>
+            <Button disabled={saving || (!canCreate && !canEdit)} onClick={handleSubmit}>{t(saving ? 'experience.saving' : 'common.save')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -280,7 +294,7 @@ export default function PermissionsPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-red-600 hover:bg-red-700">{t('common.delete')}</AlertDialogAction>
+            <AlertDialogAction disabled={removing || !canDelete} onClick={handleDelete} className="bg-red-600 hover:bg-red-700">{t('common.delete')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

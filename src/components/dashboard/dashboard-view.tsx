@@ -1,5 +1,8 @@
 'use client'
 
+import Link from 'next/link'
+import { useSession } from 'next-auth/react'
+import { SIDEBAR_NAV_ACCESS, sidebarTenantLinkVisible } from '@/lib/tenant-dashboard-nav-permissions'
 import { PageShell, PageHeader } from '@/components/layout/page-shell'
 import { useI18n } from '@/i18n/context'
 import { Users, Shield, Key, AppWindow, type LucideIcon } from 'lucide-react'
@@ -26,6 +29,16 @@ export function DashboardView({
   appCount: number
 }) {
   const { t } = useI18n()
+  const { data: session } = useSession()
+  const tasks = [
+    { href: '/applications', key: 'nextApps' },
+    { href: '/users', key: 'nextMembers' },
+    { href: '/roles', key: 'nextRoles' },
+    { href: '/profile?tab=security', key: 'nextSecurity' },
+  ].filter(task => {
+    const row = SIDEBAR_NAV_ACCESS.find(row => row.href === task.href.split('?')[0])
+    return row && sidebarTenantLinkVisible(row, session)
+  })
 
   const stats: Stat[] = [
     { titleKey: 'dashboard.statUsers', value: userCount, icon: Users },
@@ -52,6 +65,15 @@ export function DashboardView({
         }
       />
 
+      <section aria-labelledby="next-actions" className="space-y-4">
+        <h2 id="next-actions" className="text-lg font-semibold">{t('experience.nextTitle')}</h2>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {tasks.map(task => <Link key={task.href} href={task.href} className="rounded-xl border bg-card p-5 transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-primary">
+            <h3 className="font-medium">{t(`experience.${task.key}`)}</h3>
+            <p className="mt-2 text-sm text-muted-foreground">{t(`experience.${task.key}Desc`)}</p>
+          </Link>)}
+        </div>
+      </section>
       <div className="app-grid-stats">
         {stats.map((stat) => {
           const Icon = stat.icon
