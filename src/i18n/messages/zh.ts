@@ -96,8 +96,8 @@ export const zh = {
     tenantReadDeniedCodeLabel: '所需权限码',
   },
   mfaBanner: {
-    ariaLabel: 'MFA 安全提示',
-    body: '作为组织负责人或管理员，建议开启多因素认证（MFA）以保护账号与租户安全。',
+    ariaLabel: '两步验证提示',
+    body: '建议组织负责人和管理员开启两步验证，保护账号与组织。',
     cta: '前往安全设置',
     dismissAria: '关闭提示',
   },
@@ -433,10 +433,10 @@ export const zh = {
   noTenant: {
     title: '尚未加入组织',
     description:
-      '当前账号未关联任何租户。若已开放自助建组织，可填写下方表单创建；否则请等待组织管理员邀请，或使用顶栏租户菜单（如有）切换。',
+      '当前账号尚未加入组织。你可以接受邀请；如果平台允许，也可以在下方创建组织。',
     reopenLogin: '返回登录',
     stepInviteTitle: '已有邀请？',
-    stepInviteBody: '请通过邮件中的邀请链接接受邀请；接受后刷新本页或从顶栏切换租户。',
+    stepInviteBody: '向组织管理员获取邀请码，再使用当前账号接受邀请。',
     stepSelfTitle: '需要新组织？',
     stepSelfBody: '若部署已开启自助建组织，可在下方直接创建并成为负责人。',
   },
@@ -451,10 +451,10 @@ export const zh = {
     selfServiceOffBody:
       '当前部署未开放自助创建组织。请联系平台管理员为你开通租户，或请已在组织内的管理员邀请你加入。',
     selfServiceOffHint:
-      '运维可将环境变量 ALLOW_SELF_SERVICE_TENANT_CREATE 设为开启（非 0/false/no/off）后，用户可自行创建组织。',
+      '如需创建新组织，请联系平台管理员。',
     nameLabel: '组织名称',
     namePlaceholder: '例如：Acme 研发团队',
-    slugLabel: '标识 slug',
+    slugLabel: '组织标识',
     slugOptional: '（可选，留空则自动生成）',
     slugPlaceholder: '仅小写字母、数字与连字符',
     submitting: '创建中…',

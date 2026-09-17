@@ -67,6 +67,7 @@ export default function FeaturesPage() {
         fetch(`/api/features?search=${encodeURIComponent(search)}`),
         fetch('/api/applications'),
       ])
+      if (!featRes.ok || !appsRes.ok) throw new Error(t('features.loadFail'))
       setFeatures(await featRes.json())
       setApplications(await appsRes.json())
     } catch {
@@ -226,8 +227,8 @@ export default function FeaturesPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>{t('common.cancel')}</Button>
-            <Button disabled={saving || (!canCreate && !canEdit)} onClick={handleSubmit}>{t(saving ? 'experience.saving' : 'common.save')}</Button>
+            <Button variant="outline" disabled={saving} onClick={() => setDialogOpen(false)}>{t('common.cancel')}</Button>
+            <Button disabled={saving || (editFeature ? !canEdit : !canCreate)} onClick={handleSubmit}>{t(saving ? 'experience.saving' : 'common.save')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

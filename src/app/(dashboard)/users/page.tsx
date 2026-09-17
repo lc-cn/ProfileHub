@@ -229,10 +229,12 @@ export default function UsersPage() {
                           <p className="text-base font-semibold text-foreground">{t(search.trim() ? 'experience.noResults' : 'users.emptyTitle')}</p>
                           <p className="text-sm leading-relaxed text-muted-foreground">{t(search.trim() ? 'experience.searchHint' : 'users.emptyDesc')}</p>
                         </div>
+                        {search.trim() ? <Button variant="outline" onClick={() => setSearch('')}>{t('experience.clearSearch')}</Button> : (
                         <Button type="button" disabled={!canCreate} title={!canCreate ? t('experience.readOnly') : undefined} onClick={openCreate} className="gap-2">
                           <Plus className="h-4 w-4" />
                           {t('users.emptyCta')}
                         </Button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -333,8 +335,8 @@ export default function UsersPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>{t('common.cancel')}</Button>
-            <Button disabled={saving || (!canCreate && !canEdit)} onClick={handleSubmit}>{t(saving ? 'experience.saving' : 'common.save')}</Button>
+            <Button variant="outline" disabled={saving} onClick={() => setDialogOpen(false)}>{t('common.cancel')}</Button>
+            <Button disabled={saving || (editUser ? !canEdit : !canCreate)} onClick={handleSubmit}>{t(saving ? 'experience.saving' : 'common.save')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

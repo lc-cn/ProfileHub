@@ -232,8 +232,8 @@ export default function ApplicationsPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>{t('common.cancel')}</Button>
-            <Button disabled={saving || (!canCreate && !canEdit)} onClick={handleSubmit}>{t(saving ? 'experience.saving' : 'common.save')}</Button>
+            <Button variant="outline" disabled={saving} onClick={() => setDialogOpen(false)}>{t('common.cancel')}</Button>
+            <Button disabled={saving || (editApp ? !canEdit : !canCreate)} onClick={handleSubmit}>{t(saving ? 'experience.saving' : 'common.save')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

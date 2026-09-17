@@ -337,7 +337,7 @@ export function ApplicationIdpFormPage({
 
             <Section id={SECTION_IDS.branding} title={t('oauth2Clients.sectionBranding')}>
               <div className="app-form-field">
-                <Label className="text-sm font-semibold text-foreground">{t('oauth2Clients.logoUrl')}</Label>
+                <Label htmlFor="oauth-logoUrl" className="text-sm font-semibold text-foreground">{t('oauth2Clients.logoUrl')}</Label>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
                   {showLogoPreview ? (
                     <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border/80 bg-muted/40">
@@ -354,7 +354,7 @@ export function ApplicationIdpFormPage({
                   ) : null}
                   <div className="min-w-0 flex-1 space-y-2.5">
                     <Input
-                      value={form.logoUrl}
+                      id="oauth-logoUrl" value={form.logoUrl}
                       onChange={(e) => setForm((p) => ({ ...p, logoUrl: e.target.value }))}
                       placeholder="https://"
                     />
@@ -364,25 +364,25 @@ export function ApplicationIdpFormPage({
               </div>
               <div className="grid gap-6 sm:grid-cols-2">
                 <div className="app-form-field">
-                  <Label className="text-sm font-semibold text-foreground">{t('oauth2Clients.clientUri')}</Label>
+                  <Label htmlFor="oauth-clientUri" className="text-sm font-semibold text-foreground">{t('oauth2Clients.clientUri')}</Label>
                   <Input
-                    value={form.clientUri}
+                    id="oauth-clientUri" value={form.clientUri}
                     onChange={(e) => setForm((p) => ({ ...p, clientUri: e.target.value }))}
                     placeholder="https://"
                   />
                 </div>
                 <div className="app-form-field">
-                  <Label className="text-sm font-semibold text-foreground">{t('oauth2Clients.policyUri')}</Label>
+                  <Label htmlFor="oauth-policyUri" className="text-sm font-semibold text-foreground">{t('oauth2Clients.policyUri')}</Label>
                   <Input
-                    value={form.policyUri}
+                    id="oauth-policyUri" value={form.policyUri}
                     onChange={(e) => setForm((p) => ({ ...p, policyUri: e.target.value }))}
                     placeholder="https://"
                   />
                 </div>
                 <div className="app-form-field sm:col-span-2">
-                  <Label className="text-sm font-semibold text-foreground">{t('oauth2Clients.tosUri')}</Label>
+                  <Label htmlFor="oauth-tosUri" className="text-sm font-semibold text-foreground">{t('oauth2Clients.tosUri')}</Label>
                   <Input
-                    value={form.tosUri}
+                    id="oauth-tosUri" value={form.tosUri}
                     onChange={(e) => setForm((p) => ({ ...p, tosUri: e.target.value }))}
                     placeholder="https://"
                   />
@@ -495,11 +495,13 @@ export function ApplicationIdpFormPage({
                   </div>
                 </div>
               </div>
+              <details className="space-y-4 rounded-lg border p-4">
+                <summary className="cursor-pointer text-sm font-medium">{t('oauth2Clients.sectionAdvanced')}</summary>
               <div className="grid gap-6 sm:grid-cols-3">
                 <div className="app-form-field">
-                  <Label className="text-sm font-semibold text-foreground">{t('oauth2Clients.accessTokenTtl')}</Label>
+                  <Label htmlFor="oauth-accessTokenTtlSeconds" className="text-sm font-semibold text-foreground">{t('oauth2Clients.accessTokenTtl')}</Label>
                   <Input
-                    type="number"
+                    id="oauth-accessTokenTtlSeconds" type="number"
                     min={300}
                     max={86400}
                     value={form.accessTokenTtlSeconds}
@@ -510,9 +512,9 @@ export function ApplicationIdpFormPage({
                   <FieldHint text={t('oauth2Clients.hintAccessTtl')} />
                 </div>
                 <div className="app-form-field">
-                  <Label className="text-sm font-semibold text-foreground">{t('oauth2Clients.refreshTokenTtl')}</Label>
+                  <Label htmlFor="oauth-refreshTokenTtlDays" className="text-sm font-semibold text-foreground">{t('oauth2Clients.refreshTokenTtl')}</Label>
                   <Input
-                    type="number"
+                    id="oauth-refreshTokenTtlDays" type="number"
                     min={1}
                     max={365}
                     value={form.refreshTokenTtlDays}
@@ -523,9 +525,9 @@ export function ApplicationIdpFormPage({
                   <FieldHint text={t('oauth2Clients.hintRefreshTtl')} />
                 </div>
                 <div className="app-form-field sm:col-span-1">
-                  <Label className="text-sm font-semibold text-foreground">{t('oauth2Clients.authCodeTtl')}</Label>
+                  <Label htmlFor="oauth-authorizationCodeTtlMinutes" className="text-sm font-semibold text-foreground">{t('oauth2Clients.authCodeTtl')}</Label>
                   <Input
-                    type="number"
+                    id="oauth-authorizationCodeTtlMinutes" type="number"
                     min={1}
                     max={60}
                     value={form.authorizationCodeTtlMinutes}
@@ -539,6 +541,7 @@ export function ApplicationIdpFormPage({
                   <FieldHint text={t('oauth2Clients.hintCodeTtl')} />
                 </div>
               </div>
+              </details>
               <div className="flex gap-3 rounded-xl border border-border/70 bg-card px-4 py-3">
                 <Checkbox
                   id="oauthConf"

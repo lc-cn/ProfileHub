@@ -78,6 +78,7 @@ export default function PermissionsPage() {
         fetch('/api/features'),
         fetch('/api/applications'),
       ])
+      if (!permsRes.ok || !appsRes.ok || !featuresRes.ok) throw new Error(t('permissions.loadFail'))
       setPermissions(await permsRes.json())
       setFeatures(await featuresRes.json())
       setApplications(await appsRes.json())
@@ -280,8 +281,8 @@ export default function PermissionsPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>{t('common.cancel')}</Button>
-            <Button disabled={saving || (!canCreate && !canEdit)} onClick={handleSubmit}>{t(saving ? 'experience.saving' : 'common.save')}</Button>
+            <Button variant="outline" disabled={saving} onClick={() => setDialogOpen(false)}>{t('common.cancel')}</Button>
+            <Button disabled={saving || (editPerm ? !canEdit : !canCreate)} onClick={handleSubmit}>{t(saving ? 'experience.saving' : 'common.save')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

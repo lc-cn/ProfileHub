@@ -16,7 +16,7 @@ export default function NewOrganizationPage() {
         <CardHeader>
           <CardTitle>创建新组织</CardTitle>
           <CardDescription>
-            创建后你将自动成为该组织的负责人（owner），并切换到该组织上下文。slug 全局唯一，创建后本期不可修改。
+            创建后你将成为负责人，并自动进入新组织。组织标识须唯一，创建后不可修改。
           </CardDescription>
         </CardHeader>
         <CardContent>

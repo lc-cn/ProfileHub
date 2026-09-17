@@ -441,7 +441,7 @@ export const en: Messages = {
       'This account is not linked to a tenant. If self-service is enabled, create one below; otherwise wait for an invite or use the tenant switcher in the header when available.',
     reopenLogin: 'Back to sign in',
     stepInviteTitle: 'Have an invite?',
-    stepInviteBody: 'Open the link from your email to accept. Then refresh this page or pick the tenant from the header.',
+    stepInviteBody: 'Get an invitation code from an administrator and accept it with your current account.',
     stepSelfTitle: 'Need a new organization?',
     stepSelfBody: 'If self-service tenant creation is enabled for this deployment, use the form below to create one and become the owner.',
   },
@@ -456,7 +456,7 @@ export const en: Messages = {
     selfServiceOffBody:
       'This deployment does not allow users to create organizations. Ask a platform admin for a tenant, or request an invite from someone already in an org.',
     selfServiceOffHint:
-      'Operators can set ALLOW_SELF_SERVICE_TENANT_CREATE to a truthy value (not 0/false/no/off) to allow self-service creation.',
+      'Contact a platform administrator if you need a new organization.',
     nameLabel: 'Organization name',
     namePlaceholder: 'e.g. Acme Engineering',
     slugLabel: 'Slug',

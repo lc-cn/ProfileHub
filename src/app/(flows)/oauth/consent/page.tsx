@@ -52,5 +52,5 @@ export default async function OAuthConsentPage({ searchParams }: { searchParams:
   if (row?.clientUri) links.push({ href: row.clientUri, kind: 'home' })
   if (row?.policyUri) links.push({ href: row.policyUri, kind: 'privacy' })
   if (row?.tosUri) links.push({ href: row.tosUri, kind: 'terms' })
-  return <ConsentView applicationName={appName} account={session?.user?.email || session?.user?.name || ''} redirectUri={redirectUri} fields={fields} links={links} />
+  return <ConsentView logoUri={row?.logoUrl} applicationName={appName} account={session?.user?.email || session?.user?.name || ''} redirectUri={redirectUri} fields={fields} links={links} />
 }

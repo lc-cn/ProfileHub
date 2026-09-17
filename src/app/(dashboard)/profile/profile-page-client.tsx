@@ -239,10 +239,13 @@ export function ProfilePageClient({ initialTab }: { initialTab?: ProfileTab }) {
                     <Label htmlFor="pf-image">{t('profile.imageUrl')}</Label>
                     <Input id="pf-image" value={image} onChange={(e) => setImage(e.target.value)} placeholder="https://…" />
                   </div>
+                  <details className="space-y-2 text-sm">
+                    <summary className="cursor-pointer text-muted-foreground">{t('profile.avatarUrl')}</summary>
                   <div className="space-y-2">
                     <Label htmlFor="pf-avatar">{t('profile.avatarUrl')}</Label>
                     <Input id="pf-avatar" value={avatar} onChange={(e) => setAvatar(e.target.value)} placeholder="https://…" />
                   </div>
+                  </details>
                   <Button type="submit" disabled={savingProfile}>
                     {savingProfile ? t('common.loading') : t('profile.saveProfile')}
                   </Button>

@@ -1438,32 +1438,60 @@ export async function confirmOwnerTransferRequest(
   tenantId: string,
   confirmingUserId: string
 ): Promise<'ok' | 'not_found' | 'not_pending' | 'wrong_user' | 'expired'> {
-  const db = getDb()
-  const r = await db.execute({
-    sql: `SELECT * FROM "OwnerTransferRequest" WHERE "id" = ? AND "tenantId" = ?`,
-    args: [requestId, tenantId],
-  })
-  const row = r.rows[0] as unknown as Record<string, unknown> | undefined
-  if (!row) return 'not_found'
-  if (String(row.status) !== 'pending') return 'not_pending'
-  if (String(row.toUserId) !== confirmingUserId) return 'wrong_user'
-  if (Date.parse(String(row.expiresAt)) < Date.now()) return 'expired'
+  const tx = await getDb().transaction('write')
+  try {
+    const result = await tx.execute({
+      sql: `SELECT * FROM "OwnerTransferRequest" WHERE "id" = ? AND "tenantId" = ?`,
+      args: [requestId, tenantId],
+    })
+    const row = result.rows[0]
+    if (!row) return 'not_found'
+    if (String(row.status) !== 'pending') return 'not_pending'
+    if (String(row.toUserId) !== confirmingUserId) return 'wrong_user'
+    if (Date.parse(String(row.expiresAt)) <= Date.now()) return 'expired'
+    const fromUserId = String(row.fromUserId)
+    const toUserId = String(row.toUserId)
+    const memberships = await tx.execute({
+      sql: `SELECT "userId", "tenantRole" FROM "UserTenant" WHERE "tenantId" = ? AND "userId" IN (?, ?)`,
+      args: [tenantId, fromUserId, toUserId],
+    })
+    if (!memberships.rows.some(m => m.userId === fromUserId && m.tenantRole === 'owner') ||
+        !memberships.rows.some(m => m.userId === toUserId && m.tenantRole !== 'owner')) return 'not_pending'
+    await tx.execute({
+      sql: `UPDATE "UserTenant" SET "tenantRole" = 'admin' WHERE "tenantId" = ? AND "userId" = ?`,
+      args: [tenantId, fromUserId],
+    })
+    await tx.execute({
+      sql: `UPDATE "UserTenant" SET "tenantRole" = 'owner' WHERE "tenantId" = ? AND "userId" = ?`,
+      args: [tenantId, toUserId],
+    })
+    await tx.execute({
+      sql: `UPDATE "OwnerTransferRequest" SET "status" = 'completed', "completedAt" = ? WHERE "id" = ?`,
+      args: [nowIso(), requestId],
+    })
+    // Requests from the former owner cannot be reused to create another owner.
+    await tx.execute({
+      sql: `UPDATE "OwnerTransferRequest" SET "status" = 'cancelled' WHERE "tenantId" = ? AND "status" = 'pending'`,
+      args: [tenantId],
+    })
+    await tx.commit()
+    return 'ok'
+  } finally {
+    tx.close()
+  }
+}
 
-  const fromUserId = String(row.fromUserId)
-  const toUserId = String(row.toUserId)
-  const t = nowIso()
-
-  await db.execute({
-    sql: `UPDATE "UserTenant" SET "tenantRole" = 'admin' WHERE "tenantId" = ? AND "userId" = ? AND "tenantRole" = 'owner'`,
-    args: [tenantId, fromUserId],
+/** Requests visible to the current owner or their intended recipient. */
+export async function listOwnerTransfersForMember(tenantId: string, userId: string, isOwner: boolean) {
+  const result = await getDb().execute({
+    sql: `SELECT r."id", r."toUserId", r."status", r."expiresAt", u."name" AS "recipientName", u."email" AS "recipientEmail"
+          FROM "OwnerTransferRequest" r JOIN "User" u ON u."id" = r."toUserId"
+          WHERE r."tenantId" = ? AND (? = 1 OR r."toUserId" = ?)
+          ORDER BY r."createdAt" DESC LIMIT 50`,
+    args: [tenantId, isOwner ? 1 : 0, userId],
   })
-  await db.execute({
-    sql: `UPDATE "UserTenant" SET "tenantRole" = 'owner' WHERE "tenantId" = ? AND "userId" = ?`,
-    args: [tenantId, toUserId],
-  })
-  await db.execute({
-    sql: `UPDATE "OwnerTransferRequest" SET "status" = 'completed', "completedAt" = ? WHERE "id" = ?`,
-    args: [t, requestId],
-  })
-  return 'ok'
+  return result.rows.map(row => ({
+    id: String(row.id), toUserId: String(row.toUserId), status: String(row.status),
+    expiresAt: String(row.expiresAt), recipientName: String(row.recipientName), recipientEmail: String(row.recipientEmail),
+  }))
 }

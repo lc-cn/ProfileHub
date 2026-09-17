@@ -24,7 +24,7 @@
 | `FEATURE_INVITES` | `GET` | `/api/tenants/{tenantId}/invitations` |
 | `FEATURE_INVITES` | `POST` | `/api/tenants/{tenantId}/invitations` |
 | `FEATURE_INVITES` | `POST` | `/api/invitations/accept` |
-| `FEATURE_OWNER_TRANSFER` | `POST` | `/api/tenants/{tenantId}/owner-transfer` |
+| `FEATURE_OWNER_TRANSFER` | `GET` / `POST` | `/api/tenants/{tenantId}/owner-transfer` |
 | `FEATURE_OWNER_TRANSFER` | `POST` | `/api/tenants/{tenantId}/owner-transfer/confirm` |
 
 **鉴权顺序说明**：部分路由会先校验会话再返回 `404`（例如 `accept` 在未登录时仍可能先返回 `401`）；**在已具备合法会话且开关关闭的前提下**，上述路径应以 `404` + `not_found` 为预期。
@@ -45,6 +45,7 @@
 
 **`FEATURE_OWNER_TRANSFER=off`**
 
+- [ ] `GET /api/tenants/{tenantId}/owner-transfer` → `404`，`not_found`。
 - [ ] `POST /api/tenants/{tenantId}/owner-transfer`（合法 body）→ `404`，`not_found`。
 - [ ] `POST /api/tenants/{tenantId}/owner-transfer/confirm`（合法 body）→ `404`，`not_found`。
 

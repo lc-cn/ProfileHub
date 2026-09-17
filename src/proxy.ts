@@ -22,6 +22,7 @@ function pathNeedsTenant(pathname: string): boolean {
     return false
   }
   if (
+    pathname === '/invitations' ||
     pathname === '/no-tenant' ||
     pathname === '/profile' ||
     pathname === '/organizations/new' ||

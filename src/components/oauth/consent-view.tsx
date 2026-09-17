@@ -11,8 +11,8 @@ const scopeDescriptions: Record<string, [string, string]> = {
   offline_access: ['允许应用在访问令牌过期后使用刷新令牌继续访问已同意的信息，直到刷新令牌过期或被撤销。', 'Let the app renew access to the information you approve until its refresh token expires or is revoked.'],
 }
 
-export function ConsentView({ applicationName, account, redirectUri, fields, links }: {
-  applicationName: string; account: string; redirectUri: string; fields: Record<string, string>
+export function ConsentView({ applicationName, logoUri, account, redirectUri, fields, links }: {
+  applicationName: string; logoUri?: string | null; account: string; redirectUri: string; fields: Record<string, string>
   links: { href: string; kind: 'home' | 'privacy' | 'terms' }[]
 }) {
   const { locale } = useI18n()
@@ -20,6 +20,11 @@ export function ConsentView({ applicationName, account, redirectUri, fields, lin
   const destination = new URL(redirectUri).host
   const labels = { home: zh ? '应用主页' : 'Application website', privacy: zh ? '隐私政策' : 'Privacy policy', terms: zh ? '服务条款' : 'Terms' }
   return <PageShell mainVariant="narrow">
+    {logoUri && <div>
+      {/* Application logos are external client metadata, so avoid the image optimization proxy. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={logoUri} alt={applicationName} width={48} height={48} referrerPolicy="no-referrer" className="size-12 rounded-lg object-contain" />
+    </div>}
     <PageHeader title={zh ? `登录 ${applicationName}` : `Sign in to ${applicationName}`} description={zh ? '检查应用请求的信息，确认后继续。' : 'Review the information requested by this application before continuing.'} />
     <section className="space-y-6 rounded-xl border bg-card p-6">
       <div><p className="text-sm text-muted-foreground">{zh ? '正在使用的账号' : 'Your account'}</p><p className="mt-1 break-all font-medium">{account}</p></div>

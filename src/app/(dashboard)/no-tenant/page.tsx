@@ -31,6 +31,7 @@ export default function NoTenantPage() {
               <div className="rounded-xl border border-border/60 bg-muted/25 p-4">
                 <p className="text-sm font-semibold text-foreground">{t('noTenant.stepInviteTitle')}</p>
                 <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{t('noTenant.stepInviteBody')}</p>
+                <Button asChild variant="outline" className="mt-3"><Link href="/invitations">{t('noTenant.stepInviteTitle')}</Link></Button>
               </div>
               <div className="rounded-xl border border-border/60 bg-muted/25 p-4">
                 <p className="text-sm font-semibold text-foreground">{t('noTenant.stepSelfTitle')}</p>
